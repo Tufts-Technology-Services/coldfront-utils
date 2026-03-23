@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "coldfront-utils"
+version = "0.0.1"
+requires-python = ">=3.9"
+authors = [
+    { name = "Chris Barnett" }
+]
+description = "Coldfront Utilities"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["high-performance-computing", "resource-allocation"]
+classifiers = [
+    'Programming Language :: Python :: 3',
+    'Framework :: Django :: 4.2',
+    'Topic :: Scientific/Engineering',
+    'Topic :: System :: Systems Administration',
+    'Topic :: Internet :: WWW/HTTP :: WSGI :: Application',
+]
+dependencies = [
+    "coldfront>=1.1.7,<2",
+]
+
+[project.urls]
+"Source Code" = "https://github.com/Tufts-Technology-Services/coldfront-utils"
+
+[project.optional-dependencies]
+ssh = [
+    "fabric<=3.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest-django>=4.11.1",
+    "ruff>=0.11.4",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["coldfront_utils"]
+
+[[tool.uv.index]]
+name = "testpypi"
+url = "https://test.pypi.org/simple/"
+publish-url = "https://test.pypi.org/legacy/"
+explicit = true
+
+[tool.ruff]
+line-length = 120
+indent-width = 4
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "S308"]
+
+[tool.ruff.format]
+indent-style = "space"
+docstring-code-format = true
