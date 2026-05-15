@@ -2,6 +2,7 @@ from .attribute import update_allocation_attribute_usage, update_allocation_attr
 from .cache import ttl_cache
 from .util import bytes_to_units, units_to_bytes
 from .validation import validate_posix_path
+from .shell import get_uid, get_gid
 __all__ = [
     'update_allocation_attribute_usage',
     'update_allocation_attribute_value',
@@ -9,4 +10,6 @@ __all__ = [
     'bytes_to_units',
     'units_to_bytes',
     'validate_posix_path',
+    'get_uid',
+    'get_gid',
 ]
