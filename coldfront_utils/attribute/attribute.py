@@ -1,6 +1,6 @@
 import logging
 from django.core.exceptions import ValidationError
-from coldfront.core.allocation.models import AllocationAttribute, AllocationAttributeType
+from coldfront.core.allocation.models import AllocationAttribute, AllocationAttributeType, AttributeType
 
 logger = logging.getLogger(__name__)
 
@@ -48,3 +48,21 @@ def update_allocation_attribute_value(allocation, attribute_name, attribute_valu
             value=attribute_value_str
         )
         logger.info(f"Created {attribute_name} attribute and set value for allocation {allocation} to {attribute_value_str}")
+
+
+def create_allocation_attribute_type(name, attribute_type_name, is_required=False, is_private=False, is_changeable=False, is_unique=False, has_usage=False):
+    """Utility function to create a new allocation attribute type"""
+    if attribute_type_name not in AttributeType.objects.values_list('name', flat=True):
+        raise ValidationError(f"Attribute type {attribute_type_name} does not exist. Please create it before creating an allocation attribute type.")
+    attr_type, created = AllocationAttributeType.objects.get_or_create(name=name,
+                                                                       attribute_type=AttributeType.objects.get(name=attribute_type_name), 
+                                                                       defaults={'has_usage': has_usage,
+                                                                                 'is_required': is_required,
+                                                                                 'is_private': is_private,
+                                                                                 'is_changeable': is_changeable,
+                                                                                 'is_unique': is_unique})
+    if created:
+        logger.info(f"Created new allocation attribute type: {name} with usage enabled: {has_usage}")
+    else:
+        logger.debug(f"Allocation attribute type {name} already exists")
+    return attr_type
