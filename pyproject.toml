@@ -23,6 +23,7 @@ classifiers = [
 ]
 dependencies = [
     "coldfront>=1.1.7,<2",
+    "ldap3>=3.5.0",
 ]
 
 [project.urls]
