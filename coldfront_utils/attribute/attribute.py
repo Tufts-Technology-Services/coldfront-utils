@@ -14,8 +14,10 @@ def update_allocation_attribute_usage(allocation, attribute_name, usage_value: f
     attribute = allocation.allocationattribute_set.filter(allocation_attribute_type__name=attribute_name).first()
     if attribute:
         if attribute.allocation_attribute_type.has_usage:
-            allocation.set_usage(attribute_name, usage_value)
-            logger.info(f"Updated usage for {attribute_name} of allocation {allocation} to {usage_value}")
+            current_val = allocation.get_usage(attribute_name)
+            if usage_value != current_val:
+                allocation.set_usage(attribute_name, usage_value)
+                logger.info(f"Updated usage for {attribute_name} of allocation {allocation} to {usage_value}")
         else:
             logger.warning(f"{attribute_name} attribute for allocation {allocation} does not have usage enabled. Cannot update usage.")
     else:
@@ -37,9 +39,10 @@ def update_allocation_attribute_value(allocation, attribute_name, attribute_valu
     attribute = allocation.allocationattribute_set.filter(allocation_attribute_type__name=attribute_name).first()
     attribute_value_str = str(attribute_value).strip()
     if attribute:
-        attribute.value = attribute_value_str
-        attribute.save()
-        logger.info(f"Updated {attribute_name} for allocation {allocation} to {attribute_value_str}")
+        if attribute.value.strip() != attribute_value_str:
+            attribute.value = attribute_value_str
+            attribute.save()
+            logger.info(f"Updated {attribute_name} for allocation {allocation} to {attribute_value_str}")
     else:
         logger.warning(f"No {attribute_name} attribute found for allocation {allocation}. Creating new attribute.")
         AllocationAttribute.objects.create(
