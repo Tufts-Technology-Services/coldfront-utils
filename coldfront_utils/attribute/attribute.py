@@ -14,7 +14,7 @@ def update_allocation_attribute_usage(allocation, attribute_name, usage_value: f
     attribute = allocation.allocationattribute_set.filter(allocation_attribute_type__name=attribute_name).first()
     if attribute:
         if attribute.allocation_attribute_type.has_usage:
-            current_val = allocation.get_usage(attribute_name)
+            current_val = attribute.allocationattributeusage.value
             if usage_value != current_val:
                 allocation.set_usage(attribute_name, usage_value)
                 logger.info(f"Updated usage for {attribute_name} of allocation {allocation} to {usage_value}")
