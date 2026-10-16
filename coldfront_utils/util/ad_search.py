@@ -1,19 +1,36 @@
-from coldfront.plugins.ldap_user_search.utils import LDAPUserSearch
-import logging
 import json
+import logging
+
 import ldap.filter
+from coldfront.plugins.ldap_user_search.utils import LDAPUserSearch
 from ldap3 import get_config_parameter, set_config_parameter
 
 logger = logging.getLogger(__name__)
 
 
+def exclude_attributes_from_schema_check(ldap_attrs):
+    """Stop ldap3 checking `ldap_attrs` against the server schema before a search requests them.
+
+    ATTRIBUTES_EXCLUDED_FROM_CHECK is process-wide, and ldap3 scans all of it on every search, so
+    only attributes not already there are added -- compared case-insensitively, as ldap3 does.
+    get_config_parameter returns ldap3's own list, so this builds a new one rather than extending
+    that in place.
+    """
+    excluded = get_config_parameter("ATTRIBUTES_EXCLUDED_FROM_CHECK")
+    already_excluded = {attr.lower() for attr in excluded}
+    missing = []
+    for attr in ldap_attrs:
+        if attr.lower() not in already_excluded:
+            already_excluded.add(attr.lower())
+            missing.append(attr)
+    if missing:
+        set_config_parameter("ATTRIBUTES_EXCLUDED_FROM_CHECK", [*excluded, *missing])
+
+
 class ADSearch(LDAPUserSearch):
-    
     def search_a_user(self, user_search_string=None, search_by="all_fields", size_limit=None):
         ldap_attrs = list(self.ATTRIBUTE_MAP.values())
-        attrs = get_config_parameter("ATTRIBUTES_EXCLUDED_FROM_CHECK")
-        attrs.extend(ldap_attrs)
-        set_config_parameter("ATTRIBUTES_EXCLUDED_FROM_CHECK", attrs)
+        exclude_attributes_from_schema_check(ldap_attrs)
         if user_search_string and search_by == "all_fields":
             filter = ldap.filter.filter_format(
                 f"(&(|({ldap_attrs[0]}=*%s*)({ldap_attrs[1]}=*%s*)({ldap_attrs[2]}=*%s*)({ldap_attrs[3]}=*%s*))(objectclass=person))",
@@ -22,7 +39,9 @@ class ADSearch(LDAPUserSearch):
             size_limit = size_limit or 50
         elif user_search_string and search_by == "username_only":
             attr = self.USERNAME_ONLY_ATTR
-            filter = ldap.filter.filter_format(f"(&({self.ATTRIBUTE_MAP[attr]}=%s)(objectclass=person))", [user_search_string])
+            filter = ldap.filter.filter_format(
+                f"(&({self.ATTRIBUTE_MAP[attr]}=%s)(objectclass=person))", [user_search_string]
+            )
             size_limit = 1
         elif user_search_string and search_by == "autocomplete":
             filter = ldap.filter.filter_format(
@@ -32,14 +51,18 @@ class ADSearch(LDAPUserSearch):
             size_limit = size_limit or 15
         elif user_search_string and search_by == "group_only":
             attr = self.USERNAME_ONLY_ATTR
-            filter = ldap.filter.filter_format(f"(&({self.ATTRIBUTE_MAP[attr]}=%s)(objectclass=group))", [user_search_string])
+            filter = ldap.filter.filter_format(
+                f"(&({self.ATTRIBUTE_MAP[attr]}=%s)(objectclass=group))", [user_search_string]
+            )
             size_limit = 1
         elif user_search_string and search_by == "all_object_names":
             attr = self.USERNAME_ONLY_ATTR
             filter = ldap.filter.filter_format(f"({self.ATTRIBUTE_MAP[attr]}=%s)", [user_search_string])
             size_limit = 1
         elif user_search_string and search_by in self.ATTRIBUTE_MAP.keys():
-            filter = ldap.filter.filter_format(f"(&({self.ATTRIBUTE_MAP[search_by]}=%s)(objectclass=person))", [user_search_string])
+            filter = ldap.filter.filter_format(
+                f"(&({self.ATTRIBUTE_MAP[search_by]}=%s)(objectclass=person))", [user_search_string]
+            )
             size_limit = size_limit or 5
         else:
             filter = "(objectclass=person)"
@@ -62,11 +85,9 @@ class ADSearch(LDAPUserSearch):
             users.append(user_dict)
         logger.info("LDAP user search for %s found %s results", user_search_string, len(users))
         return users
-    
+
     def __get_ad_object(self, object_name, filt, ldap_attrs):
-        attrs = get_config_parameter("ATTRIBUTES_EXCLUDED_FROM_CHECK")
-        attrs.extend(ldap_attrs)
-        set_config_parameter("ATTRIBUTES_EXCLUDED_FROM_CHECK", attrs)
+        exclude_attributes_from_schema_check(ldap_attrs)
         searchParameters = {
             "search_base": self.LDAP_USER_SEARCH_BASE,
             "search_filter": filt,
@@ -82,15 +103,15 @@ class ADSearch(LDAPUserSearch):
         else:
             logger.info("No AD object found for %s", object_name)
             return None
-    
+
     def get_ad_user(self, username):
         """Search for a user in AD by their username."""
-        ldap_attrs = list(self.ATTRIBUTE_MAP.values()) + ['objectSid', 'uidNumber', 'gidNumber']
+        ldap_attrs = list(self.ATTRIBUTE_MAP.values()) + ["objectSid", "uidNumber", "gidNumber"]
         filt = ldap.filter.filter_format(f"(&({ldap_attrs[0]}=%s)(objectclass=person))", [username])
         return self.__get_ad_object(username, filt, ldap_attrs)
 
     def get_ad_group(self, group_name):
         """Search for a group in AD by its name."""
-        ldap_attrs = ['sAMAccountName', 'objectSid', 'gidNumber']
+        ldap_attrs = ["sAMAccountName", "objectSid", "gidNumber"]
         filt = ldap.filter.filter_format(f"(&({ldap_attrs[0]}=%s)(objectclass=group))", [group_name])
         return self.__get_ad_object(group_name, filt, ldap_attrs)
