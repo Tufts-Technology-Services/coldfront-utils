@@ -1,11 +1,13 @@
 import functools
+
 from django.core.cache import cache
 
 
-def ttl_cache(timeout=5*60):
-    """cache of previous function calls using django cache framework. defaults to 5 minute timeout. 
-    Cache key is generated from function name and arguments, 
+def ttl_cache(timeout=5 * 60):
+    """cache of previous function calls using django cache framework. defaults to 5 minute timeout.
+    Cache key is generated from function name and arguments,
     so different functions and arguments will be cached separately."""
+
     def decorator(func):
         @functools.wraps(func)
         def wrapper_cache(*args, **kwargs):
@@ -16,5 +18,7 @@ def ttl_cache(timeout=5*60):
             result = func(*args, **kwargs)
             cache.set(cache_key, result, timeout=timeout)
             return result
+
         return wrapper_cache
+
     return decorator

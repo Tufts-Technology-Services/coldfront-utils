@@ -1,16 +1,16 @@
 import logging
-from django.core.exceptions import ValidationError
+
 from coldfront.core.allocation.models import AllocationAttribute, AllocationAttributeType, AttributeType
+from django.core.exceptions import ValidationError
 
 logger = logging.getLogger(__name__)
-
 
 
 def update_allocation_attribute_usage(allocation, attribute_name, usage_value: float):
     """Task to update the usage value of an allocation attribute for a specific allocation"""
 
     if not isinstance(usage_value, float):
-        raise ValidationError('Provided usage value is not a float')
+        raise ValidationError("Provided usage value is not a float")
     attribute = allocation.allocationattribute_set.filter(allocation_attribute_type__name=attribute_name).first()
     if attribute:
         if attribute.allocation_attribute_type.has_usage:
@@ -19,19 +19,25 @@ def update_allocation_attribute_usage(allocation, attribute_name, usage_value: f
                 allocation.set_usage(attribute_name, usage_value)
                 logger.info(f"Updated usage for {attribute_name} of allocation {allocation} to {usage_value}")
         else:
-            logger.warning(f"{attribute_name} attribute for allocation {allocation} does not have usage enabled. Cannot update usage.")
+            logger.warning(
+                f"{attribute_name} attribute for allocation {allocation} does not have usage enabled. Cannot update usage."
+            )
     else:
         logger.warning(f"No {attribute_name} attribute found for allocation {allocation}. Creating new attribute.")
         attr, _ = AllocationAttribute.objects.get_or_create(
             allocation=allocation,
             allocation_attribute_type=AllocationAttributeType.objects.get(name=attribute_name),
-            value=usage_value # setting to usage_value for now, but this should be set to the actual value for the attribute when that information is available
+            value=usage_value,  # setting to usage_value for now, but this should be set to the actual value for the attribute when that information is available
         )
         if attr.allocation_attribute_type.has_usage:
             allocation.set_usage(attribute_name, usage_value)
-            logger.info(f"Created {attribute_name} attribute and set usage for allocation {allocation} to {usage_value}")
+            logger.info(
+                f"Created {attribute_name} attribute and set usage for allocation {allocation} to {usage_value}"
+            )
         else:
-            logger.warning(f"{attribute_name} attribute for allocation {allocation} does not have usage enabled. Cannot set usage.")
+            logger.warning(
+                f"{attribute_name} attribute for allocation {allocation} does not have usage enabled. Cannot set usage."
+            )
 
 
 def update_allocation_attribute_value(allocation, attribute_name, attribute_value):
@@ -48,22 +54,38 @@ def update_allocation_attribute_value(allocation, attribute_name, attribute_valu
         AllocationAttribute.objects.create(
             allocation=allocation,
             allocation_attribute_type=AllocationAttributeType.objects.get(name=attribute_name),
-            value=attribute_value_str
+            value=attribute_value_str,
         )
-        logger.info(f"Created {attribute_name} attribute and set value for allocation {allocation} to {attribute_value_str}")
+        logger.info(
+            f"Created {attribute_name} attribute and set value for allocation {allocation} to {attribute_value_str}"
+        )
 
 
-def create_allocation_attribute_type(name, attribute_type_name, is_required=False, is_private=False, is_changeable=False, is_unique=False, has_usage=False):
+def create_allocation_attribute_type(
+    name,
+    attribute_type_name,
+    is_required=False,
+    is_private=False,
+    is_changeable=False,
+    is_unique=False,
+    has_usage=False,
+):
     """Utility function to create a new allocation attribute type"""
-    if attribute_type_name not in AttributeType.objects.values_list('name', flat=True):
-        raise ValidationError(f"Attribute type {attribute_type_name} does not exist. Please create it before creating an allocation attribute type.")
-    attr_type, created = AllocationAttributeType.objects.get_or_create(name=name,
-                                                                       attribute_type=AttributeType.objects.get(name=attribute_type_name), 
-                                                                       defaults={'has_usage': has_usage,
-                                                                                 'is_required': is_required,
-                                                                                 'is_private': is_private,
-                                                                                 'is_changeable': is_changeable,
-                                                                                 'is_unique': is_unique})
+    if attribute_type_name not in AttributeType.objects.values_list("name", flat=True):
+        raise ValidationError(
+            f"Attribute type {attribute_type_name} does not exist. Please create it before creating an allocation attribute type."
+        )
+    attr_type, created = AllocationAttributeType.objects.get_or_create(
+        name=name,
+        attribute_type=AttributeType.objects.get(name=attribute_type_name),
+        defaults={
+            "has_usage": has_usage,
+            "is_required": is_required,
+            "is_private": is_private,
+            "is_changeable": is_changeable,
+            "is_unique": is_unique,
+        },
+    )
     if created:
         logger.info(f"Created new allocation attribute type: {name} with usage enabled: {has_usage}")
     else:
