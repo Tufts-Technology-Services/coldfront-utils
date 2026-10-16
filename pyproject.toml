@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "coldfront-utils"
 version = "0.0.1"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [
     { name = "Chris Barnett" }
 ]
@@ -23,7 +23,6 @@ classifiers = [
 ]
 dependencies = [
     "coldfront>=1.1.7,<2",
-    "ldap3",
 ]
 
 [project.urls]
@@ -33,10 +32,18 @@ dependencies = [
 ssh = [
     "fabric<=3.0.0",
 ]
+# For coldfront_utils.util.ad_search. Its base class, coldfront's ldap_user_search plugin, needs
+# both python-ldap (through django-auth-ldap) and ldap3; coldfront's ldap extra brings the two.
+ad = [
+    "coldfront[ldap]>=1.1.7,<2",
+]
 
 [dependency-groups]
 dev = [
+    "coldfront-utils[ad]",
     "pytest-django>=4.11.1",
+    # coldfront.core.test_helpers.factories needs it, but coldfront does not depend on it.
+    "factory-boy>=3.3.3",
     "ruff>=0.11.4",
 ]
 
@@ -60,3 +67,11 @@ select = ["E4", "E7", "E9", "F", "I", "S308"]
 [tool.ruff.format]
 indent-style = "space"
 docstring-code-format = true
+
+[tool.pytest.ini_options]
+# The tests live outside the package, unlike the plugins' tests: importing coldfront_utils
+# imports coldfront's models, which can't happen before the settings module has loaded.
+DJANGO_SETTINGS_MODULE = "tests.settings"
+pythonpath = ["."]
+python_files = ["test_*.py"]
+testpaths = ["tests"]
