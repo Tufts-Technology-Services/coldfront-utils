@@ -8,12 +8,29 @@ from ldap3 import get_config_parameter, set_config_parameter
 logger = logging.getLogger(__name__)
 
 
+def exclude_attributes_from_schema_check(ldap_attrs):
+    """Stop ldap3 checking `ldap_attrs` against the server schema before a search requests them.
+
+    ATTRIBUTES_EXCLUDED_FROM_CHECK is process-wide, and ldap3 scans all of it on every search, so
+    only attributes not already there are added -- compared case-insensitively, as ldap3 does.
+    get_config_parameter returns ldap3's own list, so this builds a new one rather than extending
+    that in place.
+    """
+    excluded = get_config_parameter("ATTRIBUTES_EXCLUDED_FROM_CHECK")
+    already_excluded = {attr.lower() for attr in excluded}
+    missing = []
+    for attr in ldap_attrs:
+        if attr.lower() not in already_excluded:
+            already_excluded.add(attr.lower())
+            missing.append(attr)
+    if missing:
+        set_config_parameter("ATTRIBUTES_EXCLUDED_FROM_CHECK", [*excluded, *missing])
+
+
 class ADSearch(LDAPUserSearch):
     def search_a_user(self, user_search_string=None, search_by="all_fields", size_limit=None):
         ldap_attrs = list(self.ATTRIBUTE_MAP.values())
-        attrs = get_config_parameter("ATTRIBUTES_EXCLUDED_FROM_CHECK")
-        attrs.extend(ldap_attrs)
-        set_config_parameter("ATTRIBUTES_EXCLUDED_FROM_CHECK", attrs)
+        exclude_attributes_from_schema_check(ldap_attrs)
         if user_search_string and search_by == "all_fields":
             filter = ldap.filter.filter_format(
                 f"(&(|({ldap_attrs[0]}=*%s*)({ldap_attrs[1]}=*%s*)({ldap_attrs[2]}=*%s*)({ldap_attrs[3]}=*%s*))(objectclass=person))",
@@ -70,9 +87,7 @@ class ADSearch(LDAPUserSearch):
         return users
 
     def __get_ad_object(self, object_name, filt, ldap_attrs):
-        attrs = get_config_parameter("ATTRIBUTES_EXCLUDED_FROM_CHECK")
-        attrs.extend(ldap_attrs)
-        set_config_parameter("ATTRIBUTES_EXCLUDED_FROM_CHECK", attrs)
+        exclude_attributes_from_schema_check(ldap_attrs)
         searchParameters = {
             "search_base": self.LDAP_USER_SEARCH_BASE,
             "search_filter": filt,
