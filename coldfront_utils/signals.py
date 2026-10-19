@@ -4,7 +4,10 @@ from django.dispatch import Signal
 # depending on those plugins.
 
 # Sent by coldfront_account_signup_plugin's create_home task once an account is fully provisioned:
-# home and scratch directories exist and the user is in the access group. Receivers get `username`.
+# home and scratch directories exist and the user is in the access group. Receivers get `username`,
+# `home_path` and `scratch_path` (the account's cluster home and scratch directories), as plain
+# strings: facts about the account, from which each receiver builds its own message. Anything else
+# a receiver needs (the user's name, a login host) it looks up itself.
 #
 # It is sent from a django-q worker, not the web process, so receivers run there. Sent with
 # send_robust: provisioning has already happened by then, so a failing receiver is logged
@@ -12,9 +15,9 @@ from django.dispatch import Signal
 hpc_account_provisioned = Signal()
 
 # Sent when an HPC account has been requested and can't be set up straight away, for anything that
-# should know an account is on its way: an admin-facing ticket, say. Receivers get `username` and
-# `home_path`, the cluster home directory the account will have. Send it once per account; when the
-# account is ready, hpc_account_provisioned follows.
+# should know an account is on its way: a ticket telling the user, say. Receivers get `username`.
+# Send it once per account; when the account is ready, hpc_account_provisioned follows, with the
+# account's paths.
 #
 # Today's sender is coldfront_account_signup_plugin's create_home task, which sends it only when the
 # user had no UID: the campus UID service had none for them and has just created one, and create_home
