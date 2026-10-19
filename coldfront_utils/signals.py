@@ -11,6 +11,18 @@ from django.dispatch import Signal
 # rather than failing the task -- a retried create_home would only fire the signal again.
 hpc_account_provisioned = Signal()
 
+# Sent when an HPC account has been requested and can't be set up straight away, for anything that
+# should know an account is on its way: an admin-facing ticket, say. Receivers get `username` and
+# `home_path`, the cluster home directory the account will have. Send it once per account; when the
+# account is ready, hpc_account_provisioned follows.
+#
+# Today's sender is coldfront_account_signup_plugin's create_home task, which sends it only when the
+# user had no UID: the campus UID service had none for them and has just created one, and create_home
+# will try again once it reaches the cluster. It isn't sent when a UID already existed and only hadn't
+# reached the cluster yet. Sent from a django-q worker with send_robust, like hpc_account_provisioned:
+# a failing receiver is logged rather than failing the task.
+hpc_account_requested = Signal()
+
 # Sent by coldfront-storage-plugin when a share creation or quota update task reaches a final
 # state: ProvisionStatus SUCCESSFUL or FAILED, in storage.constants. Nothing is sent for STARTED or
 # SCHEDULED, because a task that has scheduled its own retry hasn't finished.
@@ -24,7 +36,7 @@ hpc_account_provisioned = Signal()
 #   *_failed:      allocation  the Allocation the task ran for
 #                  message     why it failed, as recorded in the allocation's message attribute
 #                  exception   the exception the task raised, or None for a failure recorded
-#                              without one (such as missing information)
+#                              without one (such as no task or client configured)
 #
 # They are sent from a django-q worker, with send_robust, after the state has been recorded: a
 # receiver sees the allocation as the task left it, and a receiver that raises is logged rather than
