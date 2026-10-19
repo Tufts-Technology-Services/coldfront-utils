@@ -26,6 +26,17 @@ hpc_account_provisioned = Signal()
 # a failing receiver is logged rather than failing the task.
 hpc_account_requested = Signal()
 
+# Sent when setting up an HPC account fails, for anything that should tell admins: an admin-only
+# ticket, say. Receivers get `username`, `message` (why it failed) and `exception` (the exception that
+# stopped it, or None for a failure without one, such as the user not being added to the access group).
+# Send it once per failed attempt; a later attempt that succeeds sends hpc_account_provisioned. Waiting
+# for a UID to reach the cluster isn't a failure: that's hpc_account_requested's case.
+#
+# Today's sender is coldfront_account_signup_plugin's create_home task, from a django-q worker, with
+# send_robust: a failing receiver is logged rather than replacing the task's own exception, which it
+# still raises.
+hpc_account_provisioning_failed = Signal()
+
 # Sent by coldfront-storage-plugin when a share creation or quota update task reaches a final
 # state: ProvisionStatus SUCCESSFUL or FAILED, in storage.constants. Nothing is sent for STARTED or
 # SCHEDULED, because a task that has scheduled its own retry hasn't finished.
