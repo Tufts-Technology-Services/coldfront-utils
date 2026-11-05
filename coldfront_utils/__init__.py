@@ -8,6 +8,24 @@ ttl_cache` and the rest work as before.
 """
 
 import importlib
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # Never run: TYPE_CHECKING is False at runtime. Type checkers and IDEs read these imports, so
+    # they see where each helper comes from and what it is, which __getattr__ hides from them.
+    # Keep them in step with _HELPERS below (tests/test_package.py checks that they are).
+    # "x as x" marks each as re-exported on purpose, for ruff and type checkers alike
+    from .attribute import update_allocation_attribute_usage as update_allocation_attribute_usage
+    from .attribute import update_allocation_attribute_value as update_allocation_attribute_value
+    from .cache import ttl_cache as ttl_cache
+    from .mail import json_default as json_default
+    from .mail import mail_json_report as mail_json_report
+    from .mail import mail_report as mail_report
+    from .shell import get_gid as get_gid
+    from .shell import get_uid as get_uid
+    from .util import bytes_to_units as bytes_to_units
+    from .util import units_to_bytes as units_to_bytes
+    from .validation import validate_posix_path as validate_posix_path
 
 # each helper, and the module it comes from
 _HELPERS = {
