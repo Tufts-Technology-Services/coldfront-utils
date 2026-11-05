@@ -12,7 +12,9 @@ from unittest import mock
 import pytest
 from django.utils import timezone
 from django.utils.module_loading import import_string
-from django_q.models import Schedule
+from django_q.conf import Conf
+from django_q.models import Schedule, Task
+from django_q.scheduler import scheduler
 
 from coldfront_utils.tasks import SCHEDULED, Rescheduled, RetryLater, build_task_result, reschedulable
 
@@ -36,6 +38,11 @@ def index_lab_volume(allocation_id, scan_id=None):
 @reschedulable(q_options=lambda allocation_id, **_: {"task_name": f"index_allocation_{allocation_id}"})
 def index_named_volume(allocation_id, scan_id=None):
     return body(allocation_id=allocation_id, scan_id=scan_id)
+
+
+@reschedulable(retry_on=(GroupNotInADYet,), retries=2)
+def provision_group_share(path, group):
+    return body(path=path, group=group)
 
 
 @reschedulable()
@@ -205,6 +212,24 @@ def test_with_no_retries_left_retry_later_is_raised_with_its_reason(scheduled):
     scheduled.assert_not_called()
 
 
+def directory_not_visible(**_):
+    """A body's wait, the way a task raises it: from the error that caused it."""
+    try:
+        raise FileNotFoundError("/cluster/tufts/lab isn't visible yet")
+    except FileNotFoundError as error:
+        raise RetryLater(str(error), share_provisioned=True) from error
+
+
+def test_with_no_retries_left_retry_later_gives_way_to_the_error_it_was_raised_from(scheduled):
+    """So the task fails with the real error, not the wrapper that asked for the wait."""
+    body.side_effect = directory_not_visible
+
+    with pytest.raises(FileNotFoundError, match="isn't visible yet"):
+        provision_lab_share("/projects/lab", 10, retries=0)
+
+    scheduled.assert_not_called()
+
+
 # --- arguments a retry couldn't use ------------------------------------------------------------
 
 
@@ -309,6 +334,26 @@ def test_the_scheduled_retry_runs_the_task_again_with_its_arguments():
         "owner": "asmith02",
         "share_provisioned": True,
     }
+
+
+@pytest.mark.django_db
+def test_a_group_argument_reaches_the_retry_through_django_qs_own_scheduler():
+    """django-q takes "group" as a queue option, but only when its q_options has none, and the
+    scheduler always gives it one. So a task can have a group parameter: share tasks do.
+
+    Runs the retry the way a cluster would: django-q's scheduler() picks up the due schedule and
+    hands it to async_task(), which sync mode runs in this process.
+    """
+    body.side_effect = [GroupNotInADYet("group lab01 not in AD yet"), "done"]
+    provision_group_share("/projects/lab", "lab01")
+    Schedule.objects.update(next_run=timezone.now() - timedelta(minutes=1))
+
+    with mock.patch.object(Conf, "SYNC", True):
+        scheduler()
+
+    assert body.call_count == 2
+    assert body.call_args.kwargs == {"path": "/projects/lab", "group": "lab01"}
+    assert Task.objects.get().result == "done"
 
 
 # --- the result format ---------------------------------------------------------------------------
