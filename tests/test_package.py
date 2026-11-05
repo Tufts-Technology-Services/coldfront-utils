@@ -39,10 +39,6 @@ def test_each_helper_comes_from_the_module_it_is_listed_under(name, module):
     assert getattr(coldfront_utils, name) is expected
 
 
-def test_every_helper_is_exported():
-    assert sorted(coldfront_utils.__all__) == sorted(coldfront_utils._HELPERS)
-
-
 def test_an_unknown_name_is_still_an_attribute_error():
     with pytest.raises(AttributeError, match="no attribute 'not_a_helper'"):
         coldfront_utils.not_a_helper

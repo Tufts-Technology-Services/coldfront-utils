@@ -69,11 +69,8 @@ def _given_acting_user(func, arguments):
 def stamp_acting_user(sender, task, **kwargs):
     """Put the acting user in the package of a task being queued: None if there's nobody.
 
-    It's the user the task was given with the _acting_user keyword, None included, or else
-    whoever is acting where it's queued, which inside a running task is that task's user. The
-    cluster's scheduler and monitor queue scheduled runs and a chain's next link with nobody
-    acting, so the keyword is how those carry one. It's left in the arguments: the worker takes
-    it out, so it can't reach the function whichever process queued the task.
+    That's the user the task was given with ACTING_USER_ARGUMENT, or else whoever is acting
+    where it's queued, which inside a running task is that task's user.
     """
     given = _given_acting_user(task.get("func"), task.get("kwargs"))
     username = get_acting_username() if given is _NOTHING else given
@@ -93,18 +90,21 @@ def _link_acting_as(link, username):
     """
     if type(link) is not tuple:
         link = (link,)
-    if _declares_acting_user_argument(link[0]):
-        return link
     link_kwargs = dict(link[2]) if len(link) > 2 else {}
-    link_kwargs.setdefault(ACTING_USER_ARGUMENT, username)
+    # the monitor queues each link through here again, by then already carrying the keyword
+    if ACTING_USER_ARGUMENT in link_kwargs or _declares_acting_user_argument(link[0]):
+        return link
+    link_kwargs[ACTING_USER_ARGUMENT] = username
     return (link[0], link[1] if len(link) > 1 else (), link_kwargs)
 
 
 def _user_named(username):
-    """The user whose login name is `username`, through whichever field the user model logs in with."""
+    """The user whose login name is `username`, looked up the way logging in looks them up."""
     user_model = get_user_model()
-    # _default_manager, not objects: a custom user model needn't have a manager of that name
-    return user_model._default_manager.filter(**{user_model.USERNAME_FIELD: username}).first()
+    try:
+        return user_model._default_manager.get_by_natural_key(username)
+    except user_model.DoesNotExist:
+        return None
 
 
 @receiver(pre_execute, dispatch_uid="coldfront_utils.task_context.restore_acting_user")
@@ -115,9 +115,7 @@ def restore_acting_user(sender, func, task, **kwargs):
     keeps on HistoricalRecords.context, and a worker has none, so every row a task wrote had no
     user. A stand-in request with the acting user's User gives each row they lead to their name.
     """
-    # The keyword is taken out here, just before django-q calls the function with these same
-    # arguments, rather than when it's queued: a task queued by a process without this receiver,
-    # such as a scheduler or monitor still running older code during a deploy, is covered too.
+    # taken out here, not when queued, so it can't reach the function whichever process queued it
     given = _given_acting_user(func, task.get("kwargs"))
     if given is not _NOTHING:
         task["kwargs"].pop(ACTING_USER_ARGUMENT)

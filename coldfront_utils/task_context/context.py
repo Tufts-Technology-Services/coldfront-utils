@@ -23,11 +23,11 @@ def acting_as(username: str | None):
 
     For code that runs outside a web request on someone's behalf: a management command, a test.
     """
-    token = _acting_username.set(username)
+    token = set_acting_username(username)
     try:
         yield
     finally:
-        _acting_username.reset(token)
+        reset_acting_username(token)
 
 
 def set_acting_username(username: str | None) -> contextvars.Token:

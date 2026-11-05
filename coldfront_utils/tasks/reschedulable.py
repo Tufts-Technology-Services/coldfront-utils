@@ -17,6 +17,7 @@ from django.apps import apps
 from django.utils import timezone
 from django_q.tasks import Schedule, schedule
 
+from ..task_context.apps import TaskContextConfig
 from ..task_context.context import ACTING_USER_ARGUMENT, get_acting_username
 from .results import SCHEDULED, build_task_result
 
@@ -157,9 +158,11 @@ def reschedulable(*, retry_on: tuple = (), retries: int = 5, wait: int = 5, q_op
             # The scheduler queues the retry with nobody acting, so it's told who to act for. Only
             # with task_context installed: its worker receiver is what takes the keyword out again.
             acting_user = get_acting_username()
-            for_user = {}
-            if acting_user is not None and apps.is_installed("coldfront_utils.task_context"):
-                for_user = {ACTING_USER_ARGUMENT: acting_user}
+            for_user = (
+                {ACTING_USER_ARGUMENT: acting_user}
+                if acting_user is not None and apps.is_installed(TaskContextConfig.name)
+                else {}
+            )
             schedule(
                 task_path,
                 **next_arguments,

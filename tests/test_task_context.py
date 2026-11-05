@@ -178,20 +178,19 @@ def test_a_dict_the_task_shares_isnt_changed():
     assert LAB_SUMMARY == {"directory": "desjardinslab"}
 
 
-def test_a_failed_tasks_traceback_is_left_as_it_is():
-    package = {"success": False, "result": "ValueError: no quota", "acting_user": "tphimm01"}
+@pytest.mark.parametrize(
+    "success, result",
+    [
+        pytest.param(False, "ValueError: no quota", id="a-failed-tasks-traceback"),
+        pytest.param(True, {"acting_user": "cbarne02"}, id="a-result-that-already-names-an-acting-user"),
+    ],
+)
+def test_a_result_is_left_as_it_is(success, result):
+    package = {"success": success, "result": result, "acting_user": "tphimm01"}
 
     report_acting_user(sender="django_q", func=None, task=package)
 
-    assert package["result"] == "ValueError: no quota"
-
-
-def test_a_result_that_already_names_an_acting_user_keeps_it():
-    package = {"success": True, "result": {"acting_user": "cbarne02"}, "acting_user": "tphimm01"}
-
-    report_acting_user(sender="django_q", func=None, task=package)
-
-    assert package["result"] == {"acting_user": "cbarne02"}
+    assert package["result"] == result
 
 
 # --- while a task runs -------------------------------------------------------------------------
@@ -199,7 +198,10 @@ def test_a_result_that_already_names_an_acting_user_keeps_it():
 
 @pytest.fixture
 def package_user():
-    """Give queued tasks a chosen user in their package, whoever is acting where they're queued."""
+    """Give queued tasks a chosen user in their package, whoever is acting where they're queued.
+
+    For the one test of the package alone; the others give tasks a user with the keyword.
+    """
     chosen = {}
 
     def override_package_user(sender, task, **kwargs):
@@ -232,13 +234,12 @@ def test_a_task_queued_by_a_task_carries_its_user(packages):
 
 
 @pytest.mark.django_db
-def test_history_rows_a_task_writes_name_its_user(package_user):
+def test_history_rows_a_task_writes_name_its_user():
     """Without this, every row a task wrote had no user: the worker has no request."""
     user = User.objects.create(username="tphimm01")
     project = ProjectFactory()
-    package_user["username"] = "tphimm01"
 
-    async_task("tests.test_task_context.retitle_project", project.pk, sync=True)
+    async_task("tests.test_task_context.retitle_project", project.pk, sync=True, **{ACTING_USER_ARGUMENT: "tphimm01"})
 
     latest = Project.history.filter(id=project.pk).latest("history_date")
     assert latest.title == "Retitled by a task"
@@ -247,36 +248,34 @@ def test_history_rows_a_task_writes_name_its_user(package_user):
 
 
 @pytest.mark.django_db
-def test_a_user_with_no_account_here_leaves_history_rows_without_one(package_user):
+def test_a_user_with_no_account_here_leaves_history_rows_without_one():
     project = ProjectFactory()
-    package_user["username"] = "nobody01"
 
-    async_task("tests.test_task_context.retitle_project", project.pk, sync=True)
+    async_task("tests.test_task_context.retitle_project", project.pk, sync=True, **{ACTING_USER_ARGUMENT: "nobody01"})
 
     assert Project.history.filter(id=project.pk).latest("history_date").history_user is None
 
 
 @pytest.mark.django_db
-def test_a_task_still_runs_when_its_user_cant_be_looked_up(package_user):
+def test_a_task_still_runs_when_its_user_cant_be_looked_up():
     """django-q sends these signals without catching what receivers raise: it would stop the worker."""
-    package_user["username"] = "tphimm01"
-
     with mock.patch("coldfront_utils.task_context.receivers.get_user_model", side_effect=RuntimeError("no db")):
-        task_id = async_task("tests.test_task_context.report_who_is_acting", sync=True)
+        task_id = async_task(
+            "tests.test_task_context.report_who_is_acting", sync=True, **{ACTING_USER_ARGUMENT: "tphimm01"}
+        )
 
     assert Task.objects.get(id=task_id).result == {"seen": "tphimm01", "acting_user": "tphimm01"}
     assert get_acting_username() is None
 
 
 @pytest.mark.django_db
-def test_a_request_simple_history_already_had_is_put_back(package_user):
+def test_a_request_simple_history_already_had_is_put_back():
     """Sync mode runs the task inside the caller's process, which may be handling a request."""
     User.objects.create(username="tphimm01")
     web_request = SimpleNamespace(user=AnonymousUser())
     HistoricalRecords.context.request = web_request
-    package_user["username"] = "tphimm01"
     try:
-        async_task("tests.test_task_context.report_who_is_acting", sync=True)
+        async_task("tests.test_task_context.report_who_is_acting", sync=True, **{ACTING_USER_ARGUMENT: "tphimm01"})
 
         assert HistoricalRecords.context.request is web_request
     finally:

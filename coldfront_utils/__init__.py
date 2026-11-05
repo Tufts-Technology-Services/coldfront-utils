@@ -11,10 +11,8 @@ import importlib
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    # Never run: TYPE_CHECKING is False at runtime. Type checkers and IDEs read these imports, so
-    # they see where each helper comes from and what it is, which __getattr__ hides from them.
-    # Keep them in step with _HELPERS below (tests/test_package.py checks that they are).
-    # "x as x" marks each as re-exported on purpose, for ruff and type checkers alike
+    # _HELPERS as type checkers and IDEs see it; tests/test_package.py keeps the two in step.
+    # "x as x" marks each as re-exported on purpose.
     from .attribute import update_allocation_attribute_usage as update_allocation_attribute_usage
     from .attribute import update_allocation_attribute_value as update_allocation_attribute_value
     from .cache import ttl_cache as ttl_cache
