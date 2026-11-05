@@ -76,5 +76,5 @@ uv run ruff format .
 ```
 
 The tests run against coldfront's own settings (`tests/settings.py`) with an in-memory SQLite
-database. They live in `tests/` rather than inside the package because importing
-`coldfront_utils` imports coldfront's models, which can't happen before Django's settings load.
+database. They live in `tests/` rather than inside the package because several of the helpers
+import coldfront's models, which can't happen before Django's settings load.
