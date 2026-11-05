@@ -8,7 +8,8 @@ _acting_username = contextvars.ContextVar("acting_username", default=None)
 # The keyword that gives the acting user to a task queued where nobody is acting: a scheduled run,
 # or a chain's next link, which the cluster's scheduler and monitor queue. The worker takes it out
 # of the task's arguments just before calling the function, so the function never sees it; None
-# means nobody. A task that declares a parameter of this name keeps it as its own argument.
+# means nobody. Reserved, as django-q reserves hook, group and timeout: a task's own parameter of
+# this name would never receive its argument. @reschedulable refuses a task that has one.
 ACTING_USER_ARGUMENT = "_acting_user"
 
 

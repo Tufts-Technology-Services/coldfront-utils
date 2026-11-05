@@ -10,9 +10,7 @@ exception here would stop the worker. The receivers that run there log their fai
 a task that can't be told who's acting still runs.
 """
 
-import inspect
 import logging
-import pydoc
 from types import SimpleNamespace
 
 from django.contrib.auth import get_user_model
@@ -37,32 +35,9 @@ _NOTHING = object()
 _running_tasks = {}
 
 
-def _declares_acting_user_argument(func) -> bool:
-    """Whether a task function has a parameter named like the keyword, which is then its own.
-
-    `func` is a function or the dotted path django-q stores, resolved the way its worker does.
-    """
-    if isinstance(func, str):
-        func = pydoc.locate(func)
-    if not callable(func):
-        return False
-    try:
-        parameter = inspect.signature(func).parameters.get(ACTING_USER_ARGUMENT)
-    except (TypeError, ValueError):
-        return False
-    return parameter is not None and parameter.kind in (parameter.POSITIONAL_OR_KEYWORD, parameter.KEYWORD_ONLY)
-
-
-def _given_acting_user(func, arguments):
-    """The user a task was given with the _acting_user keyword, or _NOTHING if it wasn't given one.
-
-    A task that declares a parameter of that name wasn't: the argument is its own.
-    """
-    if not isinstance(arguments, dict) or ACTING_USER_ARGUMENT not in arguments:
-        return _NOTHING
-    if _declares_acting_user_argument(func):
-        return _NOTHING
-    return arguments[ACTING_USER_ARGUMENT]
+def _given_acting_user(arguments):
+    """The user a task was given with the _acting_user keyword, or _NOTHING if it wasn't given one."""
+    return arguments.get(ACTING_USER_ARGUMENT, _NOTHING) if isinstance(arguments, dict) else _NOTHING
 
 
 @receiver(pre_enqueue, dispatch_uid="coldfront_utils.task_context.stamp_acting_user")
@@ -72,7 +47,7 @@ def stamp_acting_user(sender, task, **kwargs):
     That's the user the task was given with ACTING_USER_ARGUMENT, or else whoever is acting
     where it's queued, which inside a running task is that task's user.
     """
-    given = _given_acting_user(task.get("func"), task.get("kwargs"))
+    given = _given_acting_user(task.get("kwargs"))
     username = get_acting_username() if given is _NOTHING else given
     task[PACKAGE_KEY] = username
 
@@ -85,16 +60,13 @@ def _link_acting_as(link, username):
     """A chain link given the acting user, read the way django-q's async_chain reads it.
 
     async_chain takes (func, args, kwargs), or a shorter tuple, or a bare function; it checks for
-    exactly a tuple, so this does too. A link whose function declares its own _acting_user is
-    left as it is.
+    exactly a tuple, so this does too. A link given a user already keeps it: the monitor queues
+    each link through here again, by then carrying the keyword.
     """
     if type(link) is not tuple:
         link = (link,)
     link_kwargs = dict(link[2]) if len(link) > 2 else {}
-    # the monitor queues each link through here again, by then already carrying the keyword
-    if ACTING_USER_ARGUMENT in link_kwargs or _declares_acting_user_argument(link[0]):
-        return link
-    link_kwargs[ACTING_USER_ARGUMENT] = username
+    link_kwargs.setdefault(ACTING_USER_ARGUMENT, username)
     return (link[0], link[1] if len(link) > 1 else (), link_kwargs)
 
 
@@ -116,7 +88,7 @@ def restore_acting_user(sender, func, task, **kwargs):
     user. A stand-in request with the acting user's User gives each row they lead to their name.
     """
     # taken out here, not when queued, so it can't reach the function whichever process queued it
-    given = _given_acting_user(func, task.get("kwargs"))
+    given = _given_acting_user(task.get("kwargs"))
     if given is not _NOTHING:
         task["kwargs"].pop(ACTING_USER_ARGUMENT)
         task[PACKAGE_KEY] = given

@@ -69,11 +69,6 @@ def queue_then_report():
     return {"seen_after": get_acting_username(), "history_user": history_request and history_request.user.username}
 
 
-def keep_its_own_acting_user(_acting_user=None):
-    """A task with its own parameter of the reserved name: it's the task's, not the acting user."""
-    return {"argument": _acting_user, "seen": get_acting_username()}
-
-
 def retitle_project(project_pk):
     """A task that changes a model simple_history records."""
     project = Project.objects.get(pk=project_pk)
@@ -385,13 +380,6 @@ def test_an_explicit_none_means_nobody_even_while_someone_acts():
         task_id = async_task("tests.test_task_context.report_who_is_acting", sync=True, **{ACTING_USER_ARGUMENT: None})
 
     assert Task.objects.get(id=task_id).result == {"seen": None, "acting_user": None}
-
-
-@pytest.mark.django_db
-def test_a_task_that_declares_the_parameter_keeps_its_argument():
-    task_id = async_task("tests.test_task_context.keep_its_own_acting_user", sync=True, **{ACTING_USER_ARGUMENT: "bob"})
-
-    assert Task.objects.get(id=task_id).result == {"argument": "bob", "seen": None, "acting_user": None}
 
 
 @pytest.mark.django_db

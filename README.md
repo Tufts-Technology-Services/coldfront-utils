@@ -97,7 +97,9 @@ MIDDLEWARE += ["coldfront_utils.task_context.middleware.ActingUserMiddleware"]
   - any other `schedule()` can pass `_acting_user=get_acting_username()` itself. A periodic
     schedule made in the admin has nobody to act for, and runs with no user.
 
-  A task that declares its own `_acting_user` parameter keeps it as an ordinary argument.
+  The name is reserved, as django-q reserves `hook`, `group` and `timeout`: a task's own
+  `_acting_user` parameter would never receive its argument. `@reschedulable` refuses a task that
+  has one.
 
   The workers have to run this app whenever a queued task can carry the keyword. Deploy it to the
   cluster no later than to the web app. Before removing it from `INSTALLED_APPS`, let queued
