@@ -5,6 +5,12 @@ from contextlib import contextmanager
 
 _acting_username = contextvars.ContextVar("acting_username", default=None)
 
+# The keyword that gives the acting user to a task queued where nobody is acting: a scheduled run,
+# or a chain's next link, which the cluster's scheduler and monitor queue. The worker takes it out
+# of the task's arguments just before calling the function, so the function never sees it; None
+# means nobody. A task that declares a parameter of this name keeps it as its own argument.
+ACTING_USER_ARGUMENT = "_acting_user"
+
 
 def get_acting_username() -> str | None:
     """The username of whoever is acting, or None when nobody is: a scheduled run, say."""

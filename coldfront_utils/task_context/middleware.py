@@ -1,4 +1,4 @@
-from .context import reset_acting_username, set_acting_username
+from .context import acting_as
 
 
 class ActingUserMiddleware:
@@ -15,9 +15,8 @@ class ActingUserMiddleware:
     def __call__(self, request):
         if not request.user.is_authenticated:
             return self.get_response(request)
-        token = set_acting_username(request.user.username)
-        try:
+        # get_username(), not .username: a custom user model names its login field itself. Once
+        # the request is handled, acting_as puts back whoever acted before, so the user can't leak
+        # into the next request this thread handles.
+        with acting_as(request.user.get_username()):
             return self.get_response(request)
-        finally:
-            # so the user can't leak into whatever this thread or task handles next
-            reset_acting_username(token)

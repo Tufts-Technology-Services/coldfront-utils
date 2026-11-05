@@ -51,8 +51,8 @@ module loads:
 
 - it's defined at module level, so the retry can import it by path;
 - it takes every argument by keyword: no positional-only parameters or `*args`;
-- no parameter uses a name the retry needs (`retries`, `wait`) or that django-q takes for itself
-  (`name`, `timeout`, `task_name` and others; see `DJANGO_Q_ARGUMENTS`).
+- no parameter uses a name the retry needs (`retries`, `wait`, `_acting_user`) or that django-q
+  takes for itself (`name`, `timeout`, `task_name` and others; see `DJANGO_Q_ARGUMENTS`).
 
 Every argument also has to be a literal: a string, number, boolean, `None`, or a list, tuple, set
 or dict of those. django-q stores a schedule's arguments as text and reads them back with
@@ -88,8 +88,21 @@ MIDDLEWARE += ["coldfront_utils.task_context.middleware.ActingUserMiddleware"]
 - **A task whose result is a dict** names them in it under `"acting_user"`, so the task report
   shows who queued it. The `Task` table has no column for it.
 
-A chain's later links and scheduled runs, `@reschedulable` retries among them, are queued by the
-cluster's monitor and scheduler, where nobody is acting, so they carry no user.
+- **Tasks the cluster queues itself** are queued with nobody acting: a chain's later links, by the
+  monitor, and scheduled runs, by the scheduler. So they're told who to act for, with the reserved
+  keyword `_acting_user` (`ACTING_USER_ARGUMENT`). The worker takes it out of the task's arguments
+  just before calling the function, so the function never sees it, and `None` means nobody:
+  - a chain gives each of its links the user it was started with;
+  - `@reschedulable` gives each retry the user its run acted for;
+  - any other `schedule()` can pass `_acting_user=get_acting_username()` itself. A periodic
+    schedule made in the admin has nobody to act for, and runs with no user.
+
+  A task that declares its own `_acting_user` parameter keeps it as an ordinary argument.
+
+  The workers have to run this app whenever a queued task can carry the keyword. Deploy it to the
+  cluster no later than to the web app. Before removing it from `INSTALLED_APPS`, let queued
+  retries and chains finish: an older worker would pass the keyword to the function, which fails
+  with an unexpected keyword argument.
 
 The helpers `from coldfront_utils import ...` gives are imported on first use, not when the package
 is, so that this app can be installed: Django imports it while it's loading apps, before ColdFront's

@@ -6,6 +6,7 @@ that wants to see the worker take its user from the package, not from this proce
 package a different user from whoever is acting here.
 """
 
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest import mock
 
@@ -14,14 +15,18 @@ from coldfront.core.project.models import Project
 from coldfront.core.test_helpers.factories import ProjectFactory
 from django.contrib.auth.models import AnonymousUser, User
 from django.test import RequestFactory
-from django_q.models import Task
+from django.utils import timezone
+from django_q.conf import Conf
+from django_q.models import Schedule, Task
+from django_q.scheduler import scheduler
 from django_q.signals import pre_enqueue
-from django_q.tasks import async_task
+from django_q.tasks import async_chain, async_task
 from simple_history.models import HistoricalRecords
 
-from coldfront_utils.task_context import acting_as, get_acting_username
+from coldfront_utils.task_context import ACTING_USER_ARGUMENT, acting_as, get_acting_username
 from coldfront_utils.task_context.middleware import ActingUserMiddleware
 from coldfront_utils.task_context.receivers import report_acting_user
+from coldfront_utils.tasks import RetryLater, reschedulable
 
 LAB_SUMMARY = {"directory": "desjardinslab"}
 
@@ -44,6 +49,31 @@ def queue_lab_summary():
     return {"queued": async_task("tests.test_task_context.return_lab_summary", sync=True)}
 
 
+# who each run of wait_for_lab_volume acted for
+runs_acted_for = []
+
+
+@reschedulable(retries=2)
+def wait_for_lab_volume(volume):
+    """Waits once, as a task waiting for Starfish to index a volume would."""
+    runs_acted_for.append(get_acting_username())
+    if len(runs_acted_for) == 1:
+        raise RetryLater(f"{volume} not indexed yet")
+    return {"volume": volume}
+
+
+def queue_then_report():
+    """A task that runs another inline, then says who it's acting for and who history would name."""
+    async_task("tests.test_task_context.report_who_is_acting", sync=True)
+    history_request = getattr(HistoricalRecords.context, "request", None)
+    return {"seen_after": get_acting_username(), "history_user": history_request and history_request.user.username}
+
+
+def keep_its_own_acting_user(_acting_user=None):
+    """A task with its own parameter of the reserved name: it's the task's, not the acting user."""
+    return {"argument": _acting_user, "seen": get_acting_username()}
+
+
 def retitle_project(project_pk):
     """A task that changes a model simple_history records."""
     project = Project.objects.get(pk=project_pk)
@@ -64,7 +94,7 @@ def test_the_request_user_is_acting_while_the_request_is_handled():
     seen = []
     middleware = ActingUserMiddleware(lambda request: seen.append(get_acting_username()))
 
-    middleware(request_from(SimpleNamespace(is_authenticated=True, username="tphimm01")))
+    middleware(request_from(User(username="tphimm01")))
 
     assert seen == ["tphimm01"]
     assert get_acting_username() is None
@@ -84,7 +114,7 @@ def test_the_user_stops_acting_even_when_the_view_raises():
         raise RuntimeError("the view broke")
 
     with pytest.raises(RuntimeError):
-        ActingUserMiddleware(failing_view)(request_from(SimpleNamespace(is_authenticated=True, username="tphimm01")))
+        ActingUserMiddleware(failing_view)(request_from(User(username="tphimm01")))
 
     assert get_acting_username() is None
 
@@ -251,3 +281,140 @@ def test_a_request_simple_history_already_had_is_put_back(package_user):
         assert HistoricalRecords.context.request is web_request
     finally:
         del HistoricalRecords.context.request
+
+
+# --- tasks the cluster queues itself -----------------------------------------------------------
+
+
+@pytest.fixture
+def fresh_runs():
+    runs_acted_for.clear()
+    yield runs_acted_for
+    runs_acted_for.clear()
+
+
+@pytest.mark.django_db
+def test_a_retry_runs_for_whoever_the_first_run_ran_for(fresh_runs):
+    """django-q's scheduler queues the retry with nobody acting: the retry is told who."""
+    with acting_as("tphimm01"):
+        wait_for_lab_volume("vol1")
+
+    retry = Schedule.objects.get()
+    assert f"'{ACTING_USER_ARGUMENT}': 'tphimm01'" in retry.kwargs
+    Schedule.objects.update(next_run=timezone.now() - timedelta(minutes=1))
+    with mock.patch.object(Conf, "SYNC", True):
+        scheduler()
+
+    assert fresh_runs == ["tphimm01", "tphimm01"]
+    assert Task.objects.get(func="tests.test_task_context.wait_for_lab_volume").result == {
+        "volume": "vol1",
+        "acting_user": "tphimm01",
+    }
+
+
+@pytest.mark.django_db
+def test_a_retry_with_nobody_acting_isnt_given_anyone(fresh_runs):
+    wait_for_lab_volume("vol1")
+
+    assert ACTING_USER_ARGUMENT not in Schedule.objects.get().kwargs
+
+
+@pytest.mark.django_db
+def test_without_task_context_a_retry_isnt_given_the_keyword(fresh_runs):
+    """Nothing would take it out again, so the retry would fail with an unexpected keyword."""
+    with acting_as("tphimm01"), mock.patch("coldfront_utils.tasks.reschedulable.apps.is_installed", return_value=False):
+        wait_for_lab_volume("vol1")
+
+    assert ACTING_USER_ARGUMENT not in Schedule.objects.get().kwargs
+
+
+@pytest.mark.django_db
+def test_the_keyword_reaches_the_package_but_not_the_function():
+    """report_who_is_acting takes no arguments, so it would fail if the keyword reached it."""
+    task_id = async_task(
+        "tests.test_task_context.report_who_is_acting", sync=True, **{ACTING_USER_ARGUMENT: "tphimm01"}
+    )
+
+    assert Task.objects.get(id=task_id).result == {"seen": "tphimm01", "acting_user": "tphimm01"}
+
+
+@pytest.mark.django_db
+def test_a_chains_later_links_run_for_its_user():
+    """django-q's monitor queues each next link with nobody acting: the chain gives them the user.
+
+    Started with the keyword rather than inside acting_as, so the later link's user can only come
+    from the chain: in sync mode the monitor runs in this process.
+    """
+    async_chain(
+        [
+            ("tests.test_task_context.report_who_is_acting", (), {ACTING_USER_ARGUMENT: "tphimm01"}),
+            ("tests.test_task_context.report_who_is_acting",),
+        ],
+        sync=True,
+    )
+
+    results = [task.result for task in Task.objects.order_by("started")]
+    assert results == [{"seen": "tphimm01", "acting_user": "tphimm01"}] * 2
+
+
+# --- a task that runs another inline -----------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_a_task_that_runs_another_inline_keeps_its_own_user():
+    """The inner task's receivers run between the outer task's, and must leave its state alone."""
+    User.objects.create(username="tphimm01")
+
+    task_id = async_task("tests.test_task_context.queue_then_report", sync=True, **{ACTING_USER_ARGUMENT: "tphimm01"})
+
+    assert Task.objects.get(id=task_id).result == {
+        "seen_after": "tphimm01",
+        "history_user": "tphimm01",
+        "acting_user": "tphimm01",
+    }
+    # and once the outer task is done, nothing it set is left behind for the next task
+    assert get_acting_username() is None
+    assert not hasattr(HistoricalRecords.context, "request")
+
+
+# --- the _acting_user keyword --------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_an_explicit_none_means_nobody_even_while_someone_acts():
+    with acting_as("tphimm01"):
+        task_id = async_task("tests.test_task_context.report_who_is_acting", sync=True, **{ACTING_USER_ARGUMENT: None})
+
+    assert Task.objects.get(id=task_id).result == {"seen": None, "acting_user": None}
+
+
+@pytest.mark.django_db
+def test_a_task_that_declares_the_parameter_keeps_its_argument():
+    task_id = async_task("tests.test_task_context.keep_its_own_acting_user", sync=True, **{ACTING_USER_ARGUMENT: "bob"})
+
+    assert Task.objects.get(id=task_id).result == {"argument": "bob", "seen": None, "acting_user": None}
+
+
+@pytest.mark.django_db
+def test_the_worker_takes_the_keyword_out_of_a_task_queued_without_the_receiver():
+    """As a scheduler or monitor still running older code would queue it, during a deploy."""
+    from django_q.humanhash import uuid
+    from django_q.signing import SignedPackage
+    from django_q.tasks import _sync
+
+    tag = uuid()
+    package = SignedPackage.dumps(
+        {
+            "id": tag[1],
+            "name": tag[0],
+            "func": "tests.test_task_context.report_who_is_acting",
+            "args": (),
+            "kwargs": {ACTING_USER_ARGUMENT: "tphimm01"},
+            "started": timezone.now(),
+        }
+    )
+
+    task = Task.objects.get(id=_sync(package))
+
+    assert task.success is True
+    assert task.result == {"seen": "tphimm01", "acting_user": "tphimm01"}

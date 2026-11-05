@@ -10,10 +10,13 @@ AuthenticationMiddleware. Then:
   the user of every history row the task writes, and tasks it queues carry them on;
 - a task whose result is a dict names them in it, so the task report shows who queued it.
 
-A chain's later links and scheduled runs, @reschedulable retries among them, are queued by the
-cluster itself, where nobody is acting, so they carry no user.
+A chain's later links and scheduled runs are queued by the cluster itself, where nobody is acting.
+A chain carries its user to its later links, and @reschedulable to its retries. Any other
+schedule() can pass its task the keyword ACTING_USER_ARGUMENT, `_acting_user=...`, which the
+worker takes out of the arguments just before calling the task, so the task function never sees
+it.
 """
 
-from .context import acting_as, get_acting_username
+from .context import ACTING_USER_ARGUMENT, acting_as, get_acting_username
 
-__all__ = ["acting_as", "get_acting_username"]
+__all__ = ["ACTING_USER_ARGUMENT", "acting_as", "get_acting_username"]
