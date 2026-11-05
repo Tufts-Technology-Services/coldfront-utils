@@ -66,6 +66,35 @@ Why not django-q2's own retry? It redelivers a failed task, but only on brokers 
 acknowledgement, which Redis doesn't. It also uses one delay for the whole cluster, retries every
 failure, and can't change the arguments.
 
+## Who is acting: `coldfront_utils.task_context`
+
+Who did something, in the web request and in every background task it leads to. Install it with
+two settings:
+
+```python
+INSTALLED_APPS += ["coldfront_utils.task_context"]
+# after django.contrib.auth.middleware.AuthenticationMiddleware
+MIDDLEWARE += ["coldfront_utils.task_context.middleware.ActingUserMiddleware"]
+```
+
+- **In a web request,** `get_acting_username()` gives the request's user. `acting_as(username)` sets
+  it for a block, for management commands and tests.
+- **A task queued while someone is acting** carries them in its package, under `"acting_user"`.
+  That covers every `async_task`, whichever plugin or ColdFront itself queues it, without changing
+  any task.
+- **While the task runs,** `get_acting_username()` gives the same user, and tasks it queues carry
+  them on. simple_history records them as the user of every history row the task writes: without
+  this, a worker has no request, so those rows have no user.
+- **A task whose result is a dict** names them in it under `"acting_user"`, so the task report
+  shows who queued it. The `Task` table has no column for it.
+
+A chain's later links and scheduled runs, `@reschedulable` retries among them, are queued by the
+cluster's monitor and scheduler, where nobody is acting, so they carry no user.
+
+The helpers `from coldfront_utils import ...` gives are imported on first use, not when the package
+is, so that this app can be installed: Django imports it while it's loading apps, before ColdFront's
+models can be imported.
+
 ## Development
 
 ```
