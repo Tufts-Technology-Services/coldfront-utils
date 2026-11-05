@@ -26,6 +26,10 @@ RETRY_ARGUMENTS = frozenset({"retries", "wait"})
 # Keyword arguments django-q2 takes for itself: schedule() pops these when it stores a schedule,
 # and async_task() pops these when the schedule runs. A task parameter with one of these names would
 # be lost, or taken as a queue option, on every retry.
+#
+# "group" isn't one: async_task() only takes an option from the arguments when q_options doesn't
+# have it, and the scheduler always puts a "group" into a schedule's q_options. "cluster" is in
+# q_options too, but schedule() has already taken it from the arguments by then.
 DJANGO_Q_ARGUMENTS = frozenset(
     {
         # schedule()
@@ -41,7 +45,6 @@ DJANGO_Q_ARGUMENTS = frozenset(
         # async_task()
         "q_options",
         "task_name",
-        "group",
         "save",
         "sync",
         "cached",
@@ -60,7 +63,8 @@ class RetryLater(Exception):
 
     `reason` says what the task is waiting for. `changes` replace the named arguments for the next
     run, so a task can carry progress into it: skip a step that is done, or pass on an id it was
-    given. Raise it from the exception that caused the wait, so the cause stays on the traceback.
+    given. Raise it from the exception that caused the wait (`raise RetryLater(...) from error`):
+    once the retries run out, that exception is the one the task fails with.
     """
 
     def __init__(self, reason: str, **changes):
@@ -85,7 +89,8 @@ def reschedulable(*, retry_on: tuple = (), retries: int = 5, wait: int = 5, q_op
     The task runs again, `wait` minutes later and at most `retries` times, when its body raises
     RetryLater or one of the `retry_on` exception types. Anything else it raises propagates as it
     would without the decorator. Once the retries are used up, the error that would have caused the
-    next retry is raised, so the task fails with its own reason.
+    next retry is raised, so the task fails with its own reason: a `retry_on` error as it was, and a
+    RetryLater as the exception it was raised from, or as itself if it wasn't raised from one.
 
     The retry calls the same task with the same arguments, apart from any a RetryLater changes. The
     decorator rebuilds them from the call, so a task doesn't list them again. They are passed by
@@ -127,7 +132,9 @@ def reschedulable(*, retry_on: tuple = (), retries: int = 5, wait: int = 5, q_op
 
             if retries <= 0:
                 logger.error(f"{task_path} has no retries left: {reason}")
-                raise error
+                # a RetryLater raised from the real error gives way to it, so the task fails with that
+                cause = error.__cause__ if isinstance(error, RetryLater) else None
+                raise (cause if isinstance(cause, Exception) else error)
 
             next_arguments = {**_arguments_by_keyword(signature, args, kwargs), **changes}
             reserved = sorted((RETRY_ARGUMENTS | DJANGO_Q_ARGUMENTS) & set(changes))

@@ -42,7 +42,9 @@ def create_lab_share(native_path, owner, group, allocation_pk, share_provisioned
   a dict whose `"message"` is `"scheduled:<reason> (runs again in 5 minutes, 4 retries left)"`. A
   decorator around the task can check `isinstance(result, Rescheduled)`.
 - **When retries run out:** the error that would have caused the next retry is raised, so the task
-  fails with its own reason. A call can pass `retries=` and `wait=` to override the decorator's.
+  fails with its own reason. A `RetryLater` raised from another exception (`raise RetryLater(...)
+  from error`) gives way to that exception. A call can pass `retries=` and `wait=` to override the
+  decorator's.
 
 The task has to be callable the way its retry calls it, and the decorator checks this when the
 module loads:
@@ -50,7 +52,7 @@ module loads:
 - it's defined at module level, so the retry can import it by path;
 - it takes every argument by keyword: no positional-only parameters or `*args`;
 - no parameter uses a name the retry needs (`retries`, `wait`) or that django-q takes for itself
-  (`name`, `group`, `timeout` and others; see `DJANGO_Q_ARGUMENTS`).
+  (`name`, `timeout`, `task_name` and others; see `DJANGO_Q_ARGUMENTS`).
 
 Every argument also has to be a literal: a string, number, boolean, `None`, or a list, tuple, set
 or dict of those. django-q stores a schedule's arguments as text and reads them back with
