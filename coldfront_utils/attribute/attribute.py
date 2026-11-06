@@ -1,7 +1,8 @@
 import logging
 
-from coldfront.core.allocation.models import AllocationAttribute, AllocationAttributeType, AttributeType
 from django.core.exceptions import ValidationError
+
+from coldfront.core.allocation.models import AllocationAttribute, AllocationAttributeType, AttributeType
 
 logger = logging.getLogger(__name__)
 

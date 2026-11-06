@@ -11,8 +11,6 @@ from types import SimpleNamespace
 from unittest import mock
 
 import pytest
-from coldfront.core.project.models import Project
-from coldfront.core.test_helpers.factories import ProjectFactory
 from django.contrib.auth.models import AnonymousUser, User
 from django.test import RequestFactory
 from django.utils import timezone
@@ -22,6 +20,9 @@ from django_q.scheduler import scheduler
 from django_q.signals import pre_enqueue
 from django_q.tasks import async_chain, async_task
 from simple_history.models import HistoricalRecords
+
+from coldfront.core.project.models import Project
+from coldfront.core.test_helpers.factories import ProjectFactory
 
 from coldfront_utils.task_context import ACTING_USER_ARGUMENT, acting_as, get_acting_username
 from coldfront_utils.task_context.middleware import ActingUserMiddleware

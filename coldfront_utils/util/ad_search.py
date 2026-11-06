@@ -2,8 +2,9 @@ import json
 import logging
 
 import ldap.filter
-from coldfront.plugins.ldap_user_search.utils import LDAPUserSearch
 from ldap3 import get_config_parameter, set_config_parameter
+
+from coldfront.plugins.ldap_user_search.utils import LDAPUserSearch
 
 logger = logging.getLogger(__name__)
 
