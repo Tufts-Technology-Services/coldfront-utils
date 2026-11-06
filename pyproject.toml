@@ -69,8 +69,8 @@ indent-style = "space"
 docstring-code-format = true
 
 [tool.pytest.ini_options]
-# The tests live outside the package, unlike the plugins' tests: importing coldfront_utils
-# imports coldfront's models, which can't happen before the settings module has loaded.
+# The tests live outside the package, unlike the plugins' tests: several of the helpers import
+# coldfront's models, which can't happen before the settings module has loaded.
 DJANGO_SETTINGS_MODULE = "tests.settings"
 pythonpath = ["."]
 python_files = ["test_*.py"]

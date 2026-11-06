@@ -292,6 +292,10 @@ def named_task(allocation_id, name=None):
     pass
 
 
+def acting_user_task(allocation_id, _acting_user=None):
+    pass
+
+
 @pytest.mark.parametrize(
     "task, problem",
     [
@@ -300,6 +304,7 @@ def named_task(allocation_id, name=None):
         pytest.param(own_retries_task, "retries", id="retry-budget"),
         pytest.param(timeout_task, "timeout", id="async-task-option"),
         pytest.param(named_task, "name", id="schedule-option"),
+        pytest.param(acting_user_task, "_acting_user", id="acting-user"),
     ],
 )
 def test_a_task_its_retry_couldnt_call_the_same_way_is_refused(task, problem):

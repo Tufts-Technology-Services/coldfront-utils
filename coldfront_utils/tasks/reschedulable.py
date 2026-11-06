@@ -13,15 +13,19 @@ import inspect
 import logging
 from datetime import timedelta
 
+from django.apps import apps
 from django.utils import timezone
 from django_q.tasks import Schedule, schedule
 
+from ..task_context.apps import TaskContextConfig
+from ..task_context.context import ACTING_USER_ARGUMENT, get_acting_username
 from .results import SCHEDULED, build_task_result
 
 logger = logging.getLogger(__name__)
 
-# The keyword arguments the decorator adds to every call, carrying the retry budget between runs.
-RETRY_ARGUMENTS = frozenset({"retries", "wait"})
+# The keyword arguments the decorator adds to every call, carrying the retry budget between runs,
+# and the user a retry acts for (coldfront_utils.task_context).
+RETRY_ARGUMENTS = frozenset({"retries", "wait", ACTING_USER_ARGUMENT})
 
 # Keyword arguments django-q2 takes for itself: schedule() pops these when it stores a schedule,
 # and async_task() pops these when the schedule runs. A task parameter with one of these names would
@@ -151,9 +155,18 @@ def reschedulable(*, retry_on: tuple = (), retries: int = 5, wait: int = 5, q_op
             logger.warning(
                 f"{task_path} will run again in {wait} minutes ({retries - 1} retries left after that): {reason}"
             )
+            # The scheduler queues the retry with nobody acting, so it's told who to act for. Only
+            # with task_context installed: its worker receiver is what takes the keyword out again.
+            acting_user = get_acting_username()
+            for_user = (
+                {ACTING_USER_ARGUMENT: acting_user}
+                if acting_user is not None and apps.is_installed(TaskContextConfig.name)
+                else {}
+            )
             schedule(
                 task_path,
                 **next_arguments,
+                **for_user,
                 retries=retries - 1,
                 wait=wait,
                 q_options=options,

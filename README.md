@@ -51,8 +51,8 @@ module loads:
 
 - it's defined at module level, so the retry can import it by path;
 - it takes every argument by keyword: no positional-only parameters or `*args`;
-- no parameter uses a name the retry needs (`retries`, `wait`) or that django-q takes for itself
-  (`name`, `timeout`, `task_name` and others; see `DJANGO_Q_ARGUMENTS`).
+- no parameter uses a name the retry needs (`retries`, `wait`, `_acting_user`) or that django-q
+  takes for itself (`name`, `timeout`, `task_name` and others; see `DJANGO_Q_ARGUMENTS`).
 
 Every argument also has to be a literal: a string, number, boolean, `None`, or a list, tuple, set
 or dict of those. django-q stores a schedule's arguments as text and reads them back with
@@ -66,6 +66,50 @@ Why not django-q2's own retry? It redelivers a failed task, but only on brokers 
 acknowledgement, which Redis doesn't. It also uses one delay for the whole cluster, retries every
 failure, and can't change the arguments.
 
+## Who is acting: `coldfront_utils.task_context`
+
+Who did something, in the web request and in every background task it leads to. Install it with
+two settings:
+
+```python
+INSTALLED_APPS += ["coldfront_utils.task_context"]
+# after django.contrib.auth.middleware.AuthenticationMiddleware
+MIDDLEWARE += ["coldfront_utils.task_context.middleware.ActingUserMiddleware"]
+```
+
+- **In a web request,** `get_acting_username()` gives the request's user. `acting_as(username)` sets
+  it for a block, for management commands and tests.
+- **A task queued while someone is acting** carries them in its package, under `"acting_user"`.
+  That covers every `async_task`, whichever plugin or ColdFront itself queues it, without changing
+  any task.
+- **While the task runs,** `get_acting_username()` gives the same user, and tasks it queues carry
+  them on. simple_history records them as the user of every history row the task writes: without
+  this, a worker has no request, so those rows have no user.
+- **A task whose result is a dict** names them in it under `"acting_user"`, so the task report
+  shows who queued it. The `Task` table has no column for it.
+
+- **Tasks the cluster queues itself** are queued with nobody acting: a chain's later links, by the
+  monitor, and scheduled runs, by the scheduler. So they're told who to act for, with the reserved
+  keyword `_acting_user` (`ACTING_USER_ARGUMENT`). The worker takes it out of the task's arguments
+  just before calling the function, so the function never sees it, and `None` means nobody:
+  - a chain gives each of its links the user it was started with;
+  - `@reschedulable` gives each retry the user its run acted for;
+  - any other `schedule()` can pass `_acting_user=get_acting_username()` itself. A periodic
+    schedule made in the admin has nobody to act for, and runs with no user.
+
+  The name is reserved, as django-q reserves `hook`, `group` and `timeout`: a task's own
+  `_acting_user` parameter would never receive its argument. `@reschedulable` refuses a task that
+  has one.
+
+  The workers have to run this app whenever a queued task can carry the keyword. Deploy it to the
+  cluster no later than to the web app. Before removing it from `INSTALLED_APPS`, let queued
+  retries and chains finish: an older worker would pass the keyword to the function, which fails
+  with an unexpected keyword argument.
+
+The helpers `from coldfront_utils import ...` gives are imported on first use, not when the package
+is, so that this app can be installed: Django imports it while it's loading apps, before ColdFront's
+models can be imported.
+
 ## Development
 
 ```
@@ -76,5 +120,5 @@ uv run ruff format .
 ```
 
 The tests run against coldfront's own settings (`tests/settings.py`) with an in-memory SQLite
-database. They live in `tests/` rather than inside the package because importing
-`coldfront_utils` imports coldfront's models, which can't happen before Django's settings load.
+database. They live in `tests/` rather than inside the package because several of the helpers
+import coldfront's models, which can't happen before Django's settings load.
