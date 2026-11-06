@@ -1,4 +1,6 @@
 import pytest
+from django.core.exceptions import ValidationError
+
 from coldfront.core.allocation.models import AllocationAttribute, AllocationAttributeType, AllocationAttributeUsage
 from coldfront.core.test_helpers.factories import (
     AAttributeTypeFactory,
@@ -7,7 +9,6 @@ from coldfront.core.test_helpers.factories import (
     AllocationFactory,
     ResourceFactory,
 )
-from django.core.exceptions import ValidationError
 
 from coldfront_utils import update_allocation_attribute_usage, update_allocation_attribute_value
 from coldfront_utils.attribute.attribute import create_allocation_attribute_type

@@ -3,8 +3,9 @@ import json
 import logging
 from decimal import Decimal
 
-from coldfront.core.utils.common import import_from_settings
 from django.core.mail import EmailMessage
+
+from coldfront.core.utils.common import import_from_settings
 
 logger = logging.getLogger(__name__)
 
