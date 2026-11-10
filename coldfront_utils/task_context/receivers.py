@@ -17,8 +17,15 @@ from django.contrib.auth import get_user_model
 from django.dispatch import receiver
 from django_q.signals import post_execute_in_worker, pre_enqueue, pre_execute
 from simple_history.models import HistoricalRecords
+from simple_history.signals import pre_create_historical_record
 
-from .context import ACTING_USER_ARGUMENT, get_acting_username, reset_acting_username, set_acting_username
+from .context import (
+    ACTING_USER_ARGUMENT,
+    get_acting_username,
+    get_impersonated_username,
+    reset_acting_username,
+    set_acting_username,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -126,3 +133,36 @@ def report_acting_user(sender, func, task, **kwargs):
     result = task.get("result")
     if task.get("success") and isinstance(result, dict) and PACKAGE_KEY not in result:
         task["result"] = {**result, PACKAGE_KEY: task.get(PACKAGE_KEY)}
+
+
+@receiver(pre_create_historical_record, dispatch_uid="coldfront_utils.task_context.note_who_is_signed_in_as")
+def note_who_is_signed_in_as(sender, instance, history_instance, **kwargs):
+    """Record the acting administrator on a history row written while signed in as someone else.
+
+    simple_history takes the row's user from the web request, which is the account the administrator
+    signed in as. The administrator did it, so the row names them, and its change reason says whose
+    account they were in. A user the code set on the instance itself is left alone.
+
+    simple_history sends this with send(), not send_robust(), so an error here would stop the save:
+    it is logged instead, and the row keeps the request's user.
+    """
+    try:
+        impersonated = get_impersonated_username()
+        acting = get_acting_username()
+        if impersonated is None or acting is None or hasattr(instance, "_history_user"):
+            return
+        administrator = _user_named(acting)
+        if administrator is None:
+            return
+        note = f"signed in as {impersonated}"
+        existing = history_instance.history_change_reason
+        limit = history_instance._meta.get_field("history_change_reason").max_length
+        if existing:
+            suffix = f" ({note})"
+            reason = f"{existing[: limit - len(suffix)] if limit else existing}{suffix}"
+        else:
+            reason = note[:limit] if limit else note
+        history_instance.history_user = administrator
+        history_instance.history_change_reason = reason
+    except Exception:
+        logger.exception("Couldn't record who the acting user was signed in as on a history row")

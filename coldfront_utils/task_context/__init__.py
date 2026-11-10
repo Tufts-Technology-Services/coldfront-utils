@@ -4,7 +4,8 @@ Add "coldfront_utils.task_context" to INSTALLED_APPS, and
 "coldfront_utils.task_context.middleware.ActingUserMiddleware" to MIDDLEWARE after
 AuthenticationMiddleware. Then:
 
-- get_acting_username() gives the request's user in the web process;
+- get_acting_username() gives the request's user in the web process, or the administrator who
+  signed in as them with django-su, whose account get_impersonated_username() then names;
 - each task queued while someone is acting carries them in its package, under "acting_user";
 - while the task runs, get_acting_username() gives them there too, simple_history records them as
   the user of every history row the task writes, and tasks it queues carry them on;
@@ -17,6 +18,6 @@ worker takes out of the arguments just before calling the task, so the task func
 it.
 """
 
-from .context import ACTING_USER_ARGUMENT, acting_as, get_acting_username
+from .context import ACTING_USER_ARGUMENT, acting_as, get_acting_username, get_impersonated_username
 
-__all__ = ["ACTING_USER_ARGUMENT", "acting_as", "get_acting_username"]
+__all__ = ["ACTING_USER_ARGUMENT", "acting_as", "get_acting_username", "get_impersonated_username"]

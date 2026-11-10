@@ -79,6 +79,15 @@ MIDDLEWARE += ["coldfront_utils.task_context.middleware.ActingUserMiddleware"]
 
 - **In a web request,** `get_acting_username()` gives the request's user. `acting_as(username)` sets
   it for a block, for management commands and tests.
+- **When an administrator used django-su to sign in as someone,** the administrator is the acting
+  user, because they are the one acting, however many accounts they have signed in as since:
+  `get_impersonated_username()` names the account they are in, and is `None` otherwise.
+  simple_history records the administrator as the user of every row they write, with the change
+  reason `signed in as <username>` (added to any reason the code gave, within the column's length).
+  A user the code sets on the instance itself (`_history_user`) is left alone. Tasks they queue
+  carry the administrator. `acting_as(username, impersonating=...)` does the same for a block.
+  The middleware also sets `request.signed_in_by` to the administrator (`None` for anyone else),
+  for a template that says who is really working, such as django-su's banner.
 - **A task queued while someone is acting** carries them in its package, under `"acting_user"`.
   That covers every `async_task`, whichever plugin or ColdFront itself queues it, without changing
   any task.
