@@ -228,8 +228,8 @@ the live estimate, with its own script.
 
 ### The sections Tufts needs
 
-- **`storage_quota`** (storage plugin). Applies to Storage resources whose `quota_on_request`
-  resource attribute is Yes (see "Which resources ask for a quota", below). One field, the quota in
+- **`storage_quota`** (storage plugin). Applies to Storage resources, unless their `quota_on_request`
+  resource attribute is No (see "Which resources ask for a quota", below). One field, the quota in
   the plugin's units, minimum 0.1. Saves the `Storage Quota (TB)` allocation attribute, as storage's
   page does today.
 - **`billing_cost`** (billing plugin). Applies to resources that require payment. Fields: cost center
@@ -255,10 +255,12 @@ billing makes its resource attribute names (`cost_per_terabyte`, `no_cost_quota_
 This follows ColdFront's own use of resource attributes to shape the request form
 (`quantity_label`, `quantity_default_value`, `form_description`).
 
-- **Yes:** the request form shows the quota field for this resource, and requires it.
-- **No, or no attribute:** no quota field. Opting in is explicit, so a new resource doesn't start
-  asking customers for a quota by accident. The cost is a deploy step: every resource that should ask
-  has to have the attribute before the switch (see "Build order and deploy").
+- **Yes, or no attribute:** the request form shows the quota field for this resource, and requires
+  it. Asking is the default (changed 2026-11-13 from opting in): the storage tasks need a quota, so a
+  Storage allocation without one can't be provisioned, and earlier versions asked for every Storage
+  resource. Nothing has to be set before the switch.
+- **No:** no quota field; an admin sets the quota. If such an allocation is activated first, share
+  creation and quota updates record `failed` with the message `no quota` rather than raising.
 
 The same approach can later carry the field's minimum or default per resource (for example
 `quota_minimum`), as ColdFront's `quantity_default_value` does for quantity.
@@ -268,12 +270,12 @@ quota for any of them, so a resource that doesn't ask has no quota until an admi
 
 | Resource | Paid | `quota_on_request` |
 |---|---|---|
-| Tier 1 HPC | yes | Yes |
-| Tier 1 NFS Rstore | yes | Yes |
-| Tier 1 Other | yes | Yes |
-| Tier 1 RStore | yes | Yes |
-| Tier 2 Research | yes | Yes |
-| Tier 3 Research | yes | Yes |
+| Tier 1 HPC | yes | Yes (default) |
+| Tier 1 NFS Rstore | yes | Yes (default) |
+| Tier 1 Other | yes | Yes (default) |
+| Tier 1 RStore | yes | Yes (default) |
+| Tier 2 Research | yes | Yes (default) |
+| Tier 3 Research | yes | Yes (default) |
 | Course - Tier 1 HPC | no | to decide |
 | Course - Tier 1 RStore | no | to decide |
 | TTS Staff - Tier 1 HPC | no | to decide |
@@ -281,7 +283,7 @@ quota for any of them, so a resource that doesn't ask has no quota until an admi
 | TTS Staff - Tier 2 Research | no | to decide |
 | TTS Staff - Tier 3 Research | no | to decide |
 
-Paid storage must say Yes: billing's cost preview and charges need the quota.
+Paid storage must not say No: billing's cost preview and charges need the quota.
 
 ## Changes by repo
 
@@ -301,10 +303,9 @@ Paid storage must say Yes: billing's cost preview and charges need the quota.
    it (a version bump, as for 0.2.0).
 2. Storage and billing: their sections, test-first, against that release. Each plugin's old view and
    page are removed in the same change.
-3. Before the switch, on each host: create the `quota_on_request` resource attribute type (Yes/No)
-   and set it on the resources in the table under "Which resources ask for a quota". A data migration
-   in the storage plugin can create the type; which resources say Yes is each site's choice, so that
-   part is done by hand or with a small management command.
+3. After the switch, on each host: set `quota_on_request` to No on any resource in the table under
+   "Which resources ask for a quota" that shouldn't ask. The storage plugin's migration 0004 creates
+   the type (Yes/No); until a resource says No, it asks, as before.
 4. Lock all of them in the fork's `uv.lock` together, and deploy with the ansible change in the same
    run, first to s01.
 
@@ -321,7 +322,8 @@ app stops startup with `ImproperlyConfigured`; one listed after it is E002.
 ## Open questions
 
 1. **Unpaid storage.** Decided: the `quota_on_request` resource attribute (see "Which resources ask
-   for a quota"). Still to decide: which of the six unpaid resources (Course and TTS Staff) say Yes.
+   for a quota"), asking by default. Still to decide: which of the six unpaid resources (Course and
+   TTS Staff) say No.
 2. **Billed resources that aren't storage.** What does billing need for them, and what does the cost
    preview show?
 3. **Incomplete requests that already exist.** New allocations made through the current second
