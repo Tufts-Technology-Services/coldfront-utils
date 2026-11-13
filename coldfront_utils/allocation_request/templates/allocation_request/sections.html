@@ -1,0 +1,9 @@
+{% comment %}
+The container for the request form's section cards. htmx swaps it whole when the resource changes,
+so it is here even when no section applies. After a submit with errors, the summary sits above the
+cards, where the field errors it points to are.
+{% endcomment %}
+<div id="{{ container_id }}">
+{% if summary_errors %}<div class="alert alert-danger mt-3" role="alert">{{ summary_errors|join:" " }}</div>
+{% endif %}{% for card in cards %}{{ card }}
+{% endfor %}</div>

@@ -59,3 +59,16 @@ share_creation_successful = Signal()
 share_creation_failed = Signal()
 quota_update_successful = Signal()
 quota_update_failed = Signal()
+
+
+def sent_by(sender, view) -> bool:
+    """Whether a signal was sent by `view` or a subclass of it.
+
+    For receivers of signals a view sends with `sender=self.__class__`, such as ColdFront's
+    allocation_new: take every sender and check with this, rather than connecting with `sender=`.
+    Apps replace ColdFront's views with subclasses (coldfront_utils.allocation_request replaces
+    AllocationCreateView), so `sender=` matches whichever class the name held when the receiver's
+    module was imported. Senders that aren't classes, such as the None that Allocation.add_user
+    sends by default, are never `view`.
+    """
+    return isinstance(sender, type) and issubclass(sender, view)

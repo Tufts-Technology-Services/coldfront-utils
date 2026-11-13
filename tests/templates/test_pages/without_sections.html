@@ -1,0 +1,2 @@
+{% comment %}A site's request page that renders fields by hand and forgot {{ form.request_sections }}.{% endcomment %}
+<form method="post">{% csrf_token %}{{ form.resource }}{{ form.justification }}</form>

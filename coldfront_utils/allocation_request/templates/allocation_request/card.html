@@ -1,0 +1,16 @@
+{% load crispy_forms_tags %}{% comment %}
+The card every section's template extends, so every card looks the same. Fill the blocks:
+  heading: the card's heading, e.g. "Storage";
+  intro: text under the heading, which may be paragraphs or a list. Put it in a small template of its
+    own and include it here, so a site can change the wording by overriding just that template. A card
+    with no intro text overrides intro_wrapper with nothing, so no empty space is left;
+  fields: the section's fields; by default, its form as crispy renders it.
+Context: section, section_form, resource, project, and whatever the section's card_context() adds.
+{% endcomment %}
+<section class="card mt-4 mb-3" data-request-section="{{ section.name }}">
+  <div class="card-header"><h5 class="mb-0">{% block heading %}{% endblock %}</h5></div>
+  <div class="card-body">
+    {% block intro_wrapper %}<div class="text-muted mb-3">{% block intro %}{% endblock %}</div>{% endblock %}
+    {% block fields %}{{ section_form|crispy }}{% endblock %}
+  </div>
+</section>

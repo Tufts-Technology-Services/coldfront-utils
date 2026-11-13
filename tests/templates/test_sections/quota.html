@@ -1,0 +1,3 @@
+{% extends "allocation_request/card.html" %}
+{% block heading %}Storage{% endblock %}
+{% block intro %}<p>How much storage this allocation needs, in terabytes.</p><span class="requested-by">{{ request.user.username }}</span>{% endblock %}

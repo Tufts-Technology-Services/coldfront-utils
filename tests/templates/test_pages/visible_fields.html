@@ -1,0 +1,1 @@
+<form method="post">{% csrf_token %}{% for field in form.visible_fields %}{{ field }}{% endfor %}</form>
