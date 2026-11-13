@@ -29,9 +29,6 @@ dependencies = [
 "Source Code" = "https://github.com/Tufts-Technology-Services/coldfront-utils"
 
 [project.optional-dependencies]
-ssh = [
-    "fabric<=3.0.0",
-]
 # For coldfront_utils.util.ad_search. Its base class, coldfront's ldap_user_search plugin, needs
 # both python-ldap (through django-auth-ldap) and ldap3; coldfront's ldap extra brings the two.
 ad = [
