@@ -244,6 +244,38 @@ class QuotaSection(RequestSection):
   `runserver`), not when gunicorn or uWSGI start the app, so a deploy that runs `migrate`, as Tufts'
   playbook does, is what stops on an error. The `ImproperlyConfigured` errors stop any start.
 
+## Checking attribute types named in settings: `coldfront_utils.attribute.checks`
+
+Plugins look attribute types up by a name from their settings (`QUOTA_ATTRIBUTE_NAME`, ...). A
+renamed setting, a deleted type or a hand-made duplicate then fails quietly, or as a server error when
+someone uses the page. `attribute_type_warnings()` reports them as system check warnings, one for each
+name that no type has, or more than one does. It takes any of ColdFront's attribute type models
+(`AllocationAttributeType`, `ResourceAttributeType`, `ProjectAttributeType`):
+
+```python
+from django.core import checks
+
+from coldfront.core.allocation.models import AllocationAttributeType
+
+from coldfront_utils.attribute.checks import attribute_type_warnings
+
+
+@checks.register(checks.Tags.database)
+def check_quota_type(app_configs, databases=None, **kwargs):
+    return attribute_type_warnings(
+        AllocationAttributeType,
+        [QUOTA_ATTRIBUTE_NAME],
+        databases=databases,
+        check_id="storage.W002",
+        consequence="requests that ask for a quota are refused",
+    )
+```
+
+Register it with `Tags.database`: Django then runs it from `migrate` and `check --database`, not on
+every start, and passes `databases`. Without `databases` it queries nothing, and while the tables
+can't be read yet it reports nothing, so it can't stop the `migrate` that creates the types. Report
+warnings, not errors, for the same reason: `migrate` runs the checks before it migrates.
+
 ## Development
 
 ```
