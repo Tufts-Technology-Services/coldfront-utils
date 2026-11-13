@@ -49,7 +49,7 @@ from .request_section_samples import (
     requestable,
 )
 
-pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("fresh_registry")]
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("fresh_registry", "fresh_unshown_card_reports")]
 
 
 def receiver_that_does_nothing(sender, **kwargs):
@@ -695,6 +695,52 @@ def test_a_failed_submit_on_a_page_with_the_cards_isnt_logged(both_sections, cli
         client.post(create_url(project), request_data(project, free_storage))
 
     assert "request_sections" not in caplog.text
+
+
+def test_showing_a_page_without_the_cards_is_logged(
+    both_sections, page_without_cards, client, pi, project, free_storage, caplog
+):
+    client.force_login(pi)
+
+    with caplog.at_level(logging.ERROR, logger=VIEWS_LOGGER):
+        response = client.get(create_url(project), {"resource": free_storage.pk})
+
+    assert response.status_code == 200
+    assert "cards aren't shown" in caplog.text
+    assert "test_pages/without_sections.html" in caplog.text and "test_quota" in caplog.text
+
+
+def test_a_page_without_the_cards_is_logged_once_but_each_failed_submit_still_is(
+    both_sections, page_without_cards, client, pi, project, free_storage, caplog
+):
+    client.force_login(pi)
+
+    with caplog.at_level(logging.ERROR, logger=VIEWS_LOGGER):
+        client.get(create_url(project), {"resource": free_storage.pk})
+        client.get(create_url(project), {"resource": free_storage.pk})
+        client.post(create_url(project), request_data(project, free_storage))
+        client.post(create_url(project), request_data(project, free_storage))
+
+    assert caplog.text.count("cards aren't shown") == 1
+    assert caplog.text.count("A request was refused") == 2
+
+
+@pytest.mark.parametrize("shown", ["with_cards", "no_section_applies", "card_request"])
+def test_pages_that_show_their_cards_or_have_none_arent_logged(
+    both_sections, client, pi, project, free_storage, cluster, monkeypatch, caplog, shown
+):
+    client.force_login(pi)
+    if shown != "with_cards":
+        monkeypatch.setattr(AllocationRequestCreateView, "template_name", "test_pages/without_sections.html")
+
+    with caplog.at_level(logging.ERROR, logger=VIEWS_LOGGER):
+        if shown == "card_request":
+            get_cards(client, project, free_storage)
+        else:
+            resource = cluster if shown == "no_section_applies" else free_storage
+            client.get(create_url(project), {"resource": resource.pk})
+
+    assert caplog.text == ""
 
 
 def test_a_request_page_without_the_cards_gets_a_warning(both_sections, page_without_cards):

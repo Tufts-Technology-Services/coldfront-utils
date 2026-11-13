@@ -2,7 +2,7 @@ import pytest
 
 from coldfront.core.test_helpers import factories as f
 
-from coldfront_utils.allocation_request import register_request_section, sections
+from coldfront_utils.allocation_request import register_request_section, sections, views
 from coldfront_utils.allocation_request.views import AllocationRequestCreateView
 
 from .request_section_samples import BillingNoteSection, QuotaSection, billing_notes_saved, managed_project, requestable
@@ -34,6 +34,12 @@ def project(pi):
     f.AllocationStatusChoiceFactory(name="New")
     f.AllocationUserStatusChoiceFactory(name="Active")
     return project
+
+
+@pytest.fixture
+def fresh_unshown_card_reports(monkeypatch):
+    """Forget which pages were already reported for not showing the cards (once per process)."""
+    monkeypatch.setattr(views, "_pages_reported_without_cards", set())
 
 
 @pytest.fixture

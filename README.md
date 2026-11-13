@@ -169,9 +169,16 @@ the refusal properly; the refusal's message, which the reload queues again, isn'
 responses vary on `HX-Request` and `HX-Target`, so a cache doesn't serve one for the other.
 
 A page that forgets `{{ form.request_sections }}` can't complete a request that needs a card, and
-wouldn't say why. The system check `coldfront_utils.allocation_request.W002` warns when sections are
-registered and the request page's template doesn't appear to render them, and the view logs an error
-when a request is refused for its cards on a page that didn't show them.
+wouldn't say why. Two things report it:
+
+- **The view, exactly.** Whenever the page is shown and cards apply to its resource but the page
+  didn't render them, the view logs an error naming the template and the sections: once per process
+  for a page view, so a misconfigured site doesn't log on every view, and every time a request is
+  refused for errors in cards the user couldn't see. Loading the page once on a test host shows it.
+- **The system check `coldfront_utils.allocation_request.W002`, early.** It warns at `migrate` when
+  sections are registered and the request page's template doesn't appear to render them. It reads
+  the template's source, so it's a guess: it can't follow `{% include %}`, and passes any page that
+  includes another template.
 
 **A section** is a plugin's card. Subclass `RequestSection`, give it a form (a `RequestSectionForm`
 subclass) and a template, and register it in the plugin's `AppConfig.ready()`:
