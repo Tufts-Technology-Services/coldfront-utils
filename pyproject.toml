@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "coldfront-utils"
-version = "0.2.0"
+version = "0.3.0"
 requires-python = ">=3.10"
 authors = [
     { name = "Chris Barnett" }
@@ -16,13 +16,13 @@ license-files = ["LICENSE"]
 keywords = ["high-performance-computing", "resource-allocation"]
 classifiers = [
     'Programming Language :: Python :: 3',
-    'Framework :: Django :: 4.2',
+    'Framework :: Django :: 5.2',
     'Topic :: Scientific/Engineering',
     'Topic :: System :: Systems Administration',
     'Topic :: Internet :: WWW/HTTP :: WSGI :: Application',
 ]
 dependencies = [
-    "coldfront>=1.1.7,<2",
+    "coldfront>=1.1.8,<2",
 ]
 
 [project.urls]
@@ -35,7 +35,7 @@ ssh = [
 # For coldfront_utils.util.ad_search. Its base class, coldfront's ldap_user_search plugin, needs
 # both python-ldap (through django-auth-ldap) and ldap3; coldfront's ldap extra brings the two.
 ad = [
-    "coldfront[ldap]>=1.1.7,<2",
+    "coldfront[ldap]>=1.1.8,<2",
 ]
 
 [dependency-groups]
