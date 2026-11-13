@@ -158,28 +158,24 @@ def check_request_page(app_configs, **kwargs):
 
 @django_checks.register()
 def check_sections(app_configs, **kwargs):
-    """E005: a section in use can't build its form or render its card: its form_class isn't a
-    RequestSectionForm, or its template is missing. Every request for its resources would fail."""
+    """E005: a section in use can't render its card: its template is missing. Every request for its
+    resources would fail. (A bad form_class is refused when the section registers.)"""
     errors = []
     for section_class in sections.active_section_classes():
-        form_class, template = section_class.form_class, section_class.template
-        problems = []
-        if not (isinstance(form_class, type) and issubclass(form_class, sections.RequestSectionForm)):
-            problems.append("its form_class isn't a RequestSectionForm subclass")
+        template = section_class.template
         if not template:
-            problems.append("it has no template")
+            problem = "it has no template"
         else:
             try:
                 get_template(template)
+                continue
             except TemplateDoesNotExist:
-                problems.append(f"its template {template!r} doesn't exist")
-        if problems:
-            errors.append(
-                django_checks.Error(
-                    f"Request section {section_class.name!r} ({section_class.__qualname__}) can't be shown: "
-                    + "; ".join(problems),
-                    hint="Requests for the resources it applies to would fail with a server error.",
-                    id="coldfront_utils.allocation_request.E005",
-                )
+                problem = f"its template {template!r} doesn't exist"
+        errors.append(
+            django_checks.Error(
+                f"Request section {section_class.name!r} ({section_class.__qualname__}) can't be shown: {problem}",
+                hint="Requests for the resources it applies to would fail with a server error.",
+                id="coldfront_utils.allocation_request.E005",
             )
+        )
     return errors

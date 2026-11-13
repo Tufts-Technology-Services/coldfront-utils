@@ -169,9 +169,16 @@ the refusal properly; the refusal's message, which the reload queues again, isn'
 responses vary on `HX-Request` and `HX-Target`, so a cache doesn't serve one for the other.
 
 A page that forgets `{{ form.request_sections }}` can't complete a request that needs a card, and
-wouldn't say why. The system check `coldfront_utils.allocation_request.W002` warns when sections are
-registered and the request page's template doesn't appear to render them, and the view logs an error
-when a request is refused for its cards on a page that didn't show them.
+wouldn't say why. Two things report it:
+
+- **The view, exactly.** Whenever the page is shown and cards apply to its resource but the page
+  didn't render them, the view logs an error naming the template and the sections: once per process
+  for a page view, so a misconfigured site doesn't log on every view, and every time a request is
+  refused for errors in cards the user couldn't see. Loading the page once on a test host shows it.
+- **The system check `coldfront_utils.allocation_request.W002`, early.** It warns at `migrate` when
+  sections are registered and the request page's template doesn't appear to render them. It reads
+  the template's source, so it's a guess: it can't follow `{% include %}`, and passes any page that
+  includes another template.
 
 **A section** is a plugin's card. Subclass `RequestSection`, give it a form (a `RequestSectionForm`
 subclass) and a template, and register it in the plugin's `AppConfig.ready()`:
@@ -236,13 +243,47 @@ class QuotaSection(RequestSection):
   `ALLOCATION_REQUEST_SECTIONS = ["storage_quota", ...]` chooses them and their order instead; a name
   nothing registered is the system check error `coldfront_utils.allocation_request.E001`, a name
   listed twice is `E003` (the section is used once), and a setting that isn't a list is `E006`.
-- **A section that can't be shown,** whose `form_class` isn't a `RequestSectionForm` or whose template
-  is missing, is `E005`: every request for its resources would otherwise fail.
+- **A section that can't be shown,** whose template is missing, is `E005`: every request for its
+  resources would otherwise fail. A `form_class` that isn't a `RequestSectionForm` subclass is refused
+  when the section registers, with `ImproperlyConfigured`, as a bad name is: system checks don't run
+  when gunicorn or uWSGI start the app, so that's the one place sure to catch it.
 - **`save(commit=False)`** works as Django's forms do: the caller saves the allocation, then calls
   `save_m2m()`, which saves the sections too.
 - **When the checks run.** Django runs system checks with management commands (`check`, `migrate`,
   `runserver`), not when gunicorn or uWSGI start the app, so a deploy that runs `migrate`, as Tufts'
   playbook does, is what stops on an error. The `ImproperlyConfigured` errors stop any start.
+
+## Checking attribute types named in settings: `coldfront_utils.attribute.checks`
+
+Plugins look attribute types up by a name from their settings (`QUOTA_ATTRIBUTE_NAME`, ...). A
+renamed setting, a deleted type or a hand-made duplicate then fails quietly, or as a server error when
+someone uses the page. `attribute_type_warnings()` reports them as system check warnings, one for each
+name that no type has, or more than one does. It takes any of ColdFront's attribute type models
+(`AllocationAttributeType`, `ResourceAttributeType`, `ProjectAttributeType`):
+
+```python
+from django.core import checks
+
+from coldfront.core.allocation.models import AllocationAttributeType
+
+from coldfront_utils.attribute.checks import attribute_type_warnings
+
+
+@checks.register(checks.Tags.database)
+def check_quota_type(app_configs, databases=None, **kwargs):
+    return attribute_type_warnings(
+        AllocationAttributeType,
+        [QUOTA_ATTRIBUTE_NAME],
+        databases=databases,
+        check_id="storage.W002",
+        consequence="requests that ask for a quota are refused",
+    )
+```
+
+Register it with `Tags.database`: Django then runs it from `migrate` and `check --database`, not on
+every start, and passes `databases`. Without `databases` it queries nothing, and while the tables
+can't be read yet it reports nothing, so it can't stop the `migrate` that creates the types. Report
+warnings, not errors, for the same reason: `migrate` runs the checks before it migrates.
 
 ## Development
 

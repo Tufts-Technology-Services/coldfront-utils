@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 COLDFRONT_VIEWS_MODULE = "coldfront.core.allocation.views"
 # the full page and the cards share a URL, so caches must tell them apart by these
 HTMX_HEADERS = ("HX-Request", "HX-Target")
+# the request page templates already logged for not showing the cards: once per process each
+_pages_reported_without_cards = set()
 
 
 def coldfront_create_view():
@@ -77,9 +79,11 @@ class AllocationRequestCreateView(coldfront_create_view()):
             initial["resource"] = self.request.GET["resource"]
         return initial
 
-    def form_invalid(self, form):
-        response = super().form_invalid(form)
-        if "request_sections" in form.errors:
+    def render_to_response(self, context, **response_kwargs):
+        # the full page, shown or come back with errors; the cards alone are answered in get()
+        response = super().render_to_response(context, **response_kwargs)
+        form = context.get("form")
+        if getattr(form, "sections", None):
             response.add_post_render_callback(lambda rendered: report_unshown_cards(form, rendered))
         return response
 
@@ -97,16 +101,35 @@ COLDFRONT_CREATE_VIEW = AllocationRequestCreateView.__bases__[0]
 
 
 def report_unshown_cards(form, response):
-    """Log when a request failed on its cards but the page didn't show them, so the user saw no reason
-    and nothing they could fix: the page's template is missing {{ form.request_sections }}."""
-    if not form.request_sections_rendered:
+    """Log when the page didn't show cards that apply to its resource: the page's template is missing
+    {{ form.request_sections }}, so requests that need them can't be completed.
+
+    A request refused for errors in its cards is logged every time, since the user saw no reason and
+    nothing they could fix. Otherwise the page is logged once per process, so a misconfigured site
+    doesn't log on every view. Exact, unlike check W002, which guesses from the template's source."""
+    if form.request_sections_rendered:
+        return
+    template = response.template_name
+    if isinstance(template, (list, tuple)):
+        template = ", ".join(template)
+    if form.invalid_sections:
         logger.error(
             "A request was refused for errors in its %s cards, but the request page (%s) doesn't render "
             "form.request_sections, so the user couldn't see or fix them. Add {{ form.request_sections }} "
             "to the template.",
             ", ".join(form.invalid_sections),
-            ", ".join(response.template_name) if isinstance(response.template_name, list) else response.template_name,
+            template,
         )
+        return
+    if template in _pages_reported_without_cards:
+        return
+    _pages_reported_without_cards.add(template)
+    logger.error(
+        "The request page (%s) doesn't render form.request_sections, so the %s cards aren't shown and requests "
+        "that need them can't be completed. Add {{ form.request_sections }} to the template. (Logged once.)",
+        template,
+        ", ".join(section.name for section in form.sections),
+    )
 
 
 def queued_messages(request) -> list:
