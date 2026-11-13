@@ -6,7 +6,6 @@ utilities and helper functions for coldfront and coldfront plugins
 
 - `ad`: needed for `coldfront_utils.util.ad_search`. It installs coldfront's `ldap` extra, which
   includes python-ldap; python-ldap compiles against the OpenLDAP client libraries.
-- `ssh`: fabric.
 
 ```
 coldfront-utils[ad] @ git+https://github.com/Tufts-Technology-Services/coldfront-utils.git
