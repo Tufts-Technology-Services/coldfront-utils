@@ -3,9 +3,11 @@
 This layers on top of coldfront's own settings rather than hand-rolling a minimal config. These
 utilities can't be meaningfully isolated from coldfront: several of them import coldfront's
 allocation models, which is also why this module lives outside the package. coldfront_utils
-itself is not a Django app (it has no models or templates), so unlike a plugin it is not added to
-INSTALLED_APPS; only its task_context app is, below.
+itself is not a Django app, so unlike a plugin it is not added to INSTALLED_APPS; only its two
+apps are, task_context and allocation_request, below.
 """
+
+from pathlib import Path
 
 from coldfront.config.settings import *  # noqa: F403
 
@@ -16,8 +18,12 @@ DATABASES = {
     }
 }
 
-# The one part of coldfront_utils that is a Django app: installing it connects its receivers.
-INSTALLED_APPS += ["coldfront_utils.task_context"]  # noqa: F405
+# The parts of coldfront_utils that are Django apps: task_context connects its receivers, and
+# allocation_request makes ColdFront's request page use its form.
+INSTALLED_APPS += ["coldfront_utils.task_context", "coldfront_utils.allocation_request"]  # noqa: F405
+
+# Card templates for the sample sections in tests/test_allocation_request.py, as a plugin would ship.
+TEMPLATES[0]["DIRS"] = [*TEMPLATES[0]["DIRS"], str(Path(__file__).resolve().parent / "templates")]  # noqa: F405
 
 # ttl_cache stores through django.core.cache; keep that in process and private to each test run.
 CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
