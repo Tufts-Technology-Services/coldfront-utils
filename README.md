@@ -243,8 +243,10 @@ class QuotaSection(RequestSection):
   `ALLOCATION_REQUEST_SECTIONS = ["storage_quota", ...]` chooses them and their order instead; a name
   nothing registered is the system check error `coldfront_utils.allocation_request.E001`, a name
   listed twice is `E003` (the section is used once), and a setting that isn't a list is `E006`.
-- **A section that can't be shown,** whose `form_class` isn't a `RequestSectionForm` or whose template
-  is missing, is `E005`: every request for its resources would otherwise fail.
+- **A section that can't be shown,** whose template is missing, is `E005`: every request for its
+  resources would otherwise fail. A `form_class` that isn't a `RequestSectionForm` subclass is refused
+  when the section registers, with `ImproperlyConfigured`, as a bad name is: system checks don't run
+  when gunicorn or uWSGI start the app, so that's the one place sure to catch it.
 - **`save(commit=False)`** works as Django's forms do: the caller saves the allocation, then calls
   `save_m2m()`, which saves the sections too.
 - **When the checks run.** Django runs system checks with management commands (`check`, `migrate`,

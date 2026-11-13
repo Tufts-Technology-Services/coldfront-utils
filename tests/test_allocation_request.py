@@ -921,19 +921,23 @@ class MisspelledTemplateSection(QuotaSection):
     template = "test_sections/quoat.html"
 
 
-class FormlessSection(QuotaSection):
-    name = "test_formless"
-    form_class = forms.Form  # not a RequestSectionForm: it can't take the request
-
-
-@pytest.mark.parametrize("section_class", [TemplatelessSection, MisspelledTemplateSection, FormlessSection])
-def test_a_section_that_cant_render_or_build_its_form_is_an_error(section_class):
+@pytest.mark.parametrize("section_class", [TemplatelessSection, MisspelledTemplateSection])
+def test_a_section_that_cant_render_its_card_is_an_error(section_class):
     register_request_section(section_class)
 
     [error] = checks.check_sections(None)
 
     assert error.id == check_id("E005")
     assert section_class.name in error.msg
+
+
+@pytest.mark.parametrize("form_class", [forms.Form, None, "QuotaForm"])
+def test_a_form_class_that_isnt_a_request_section_form_is_refused(form_class):
+    # checked when registering, as the name is: system checks don't run when gunicorn starts
+    section_class = type("FormlessSection", (QuotaSection,), {"name": "test_formless", "form_class": form_class})
+
+    with pytest.raises(ImproperlyConfigured, match="form_class"):
+        register_request_section(section_class)
 
 
 def test_well_made_sections_pass(both_sections):

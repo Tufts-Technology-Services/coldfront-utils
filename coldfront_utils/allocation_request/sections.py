@@ -87,12 +87,20 @@ class RequestSection:
 def register_request_section(section_class):
     """Register a RequestSection subclass, so its card appears on the request form. Returns the class,
     so it can be used as a decorator. Raises ImproperlyConfigured for a name that isn't an identifier
-    of lowercase letters, digits and underscores, or that another section already has."""
+    of lowercase letters, digits and underscores, or that another section already has, and for a
+    form_class that isn't a RequestSectionForm subclass. Checked here, not by a system check, since
+    those don't run when gunicorn or uWSGI start the app."""
     name = section_class.name
     if not SECTION_NAME.fullmatch(name or ""):
         raise ImproperlyConfigured(
             f"{section_class.__name__}.name {name!r} must be lowercase letters, digits and underscores, "
             "starting with a letter: it's the section's form prefix, so it ends up in element ids"
+        )
+    form_class = section_class.form_class
+    if not (isinstance(form_class, type) and issubclass(form_class, RequestSectionForm)):
+        raise ImproperlyConfigured(
+            f"{section_class.__name__}.form_class must be a RequestSectionForm subclass, not {form_class!r}: "
+            "the request form builds it with the request's project, user and resource"
         )
     registered = _registry.get(name)
     if registered is not None and registered is not section_class:
