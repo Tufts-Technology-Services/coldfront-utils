@@ -11,7 +11,7 @@ authors = [
 ]
 description = "Coldfront Utilities"
 readme = "README.md"
-license = "MIT"
+license = "AGPL-3.0-or-later"
 license-files = ["LICENSE"]
 keywords = ["high-performance-computing", "resource-allocation"]
 classifiers = [
