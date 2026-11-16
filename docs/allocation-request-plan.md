@@ -232,19 +232,22 @@ the live estimate, with its own script.
   resource attribute is No (see "Which resources ask for a quota", below). One field, the quota in
   the plugin's units, minimum 0.1. Saves the `Storage Quota (TB)` allocation attribute, as storage's
   page does today.
-- **`billing_cost`** (billing plugin). Applies to resources that require payment. Fields: cost center
-  and grant (shown only when the project has no cost center assignment yet, as today), and the
-  no-cost quota to apply. Saves the cost center assignment and the `allocation_no_cost_quota`
-  attribute, as billing's page does today, with the same permission check for applying a no-cost
-  quota. Its card shows the no-cost quota choice (a checkbox, only when the user has no-cost quota
-  for the resource) and the cost estimate inline, updating as the quota changes; billing's current
-  confirmation dialog on Submit goes away. The estimate needs the quota, so the card's script reads
-  the `storage_quota` section's quota field by its id. That id (from the section's prefix and field
-  name) becomes a constant in this library, so billing doesn't import storage.
+- **`billing_cost`** (billing plugin). Applies to any resource that requires payment (decided
+  2026-11-13). Fields: cost center and grant (shown only when the project has no cost center
+  assignment yet, as today), saved as the project's assignment. For Storage resources only, since a
+  no-cost quota is allotted in TB of the storage quota and the estimate is per TB: the no-cost quota
+  to apply (a checkbox, only when the user has no-cost quota left for the resource and may apply it),
+  saved as the `allocation_no_cost_quota` attribute with the same permission check as billing's page,
+  and the cost estimate inline, with and without the no-cost quota, updating as the quota changes;
+  billing's confirmation dialog on Submit goes away. The estimate reads the `storage_quota` section's
+  quota field, named by a billing setting (`COLDFRONT_BILLING_QUOTA_FIELD_NAME`, default
+  `storage_quota-quota`; decided 2026-11-13 instead of a constant in this library), so billing
+  doesn't import storage: htmx in billing's card listens for that field's changes and sends its value
+  to a new estimate endpoint, which takes the project, resource and quota.
 
 Today billing's page also asks for the quota. With both sections, the quota is asked for once, by
-`storage_quota`. A billed resource that isn't storage would get its own section for whatever it's
-billed on, and billing's cost preview would need to handle it.
+`storage_quota`. A billed resource that isn't storage gets billing's card with the cost center only, until
+open question 2 settles what billing needs for it.
 
 ### Which resources ask for a quota
 
@@ -289,9 +292,9 @@ Paid storage must not say No: billing's cost preview and charges need the quota.
 
 | Repo | Change |
 |---|---|
-| coldfront-utils | The `allocation_request` app: section registry, setting and system checks, `AllocationRequestForm`, the view replacement, the view's htmx response with a resource's cards, the `request_sections` field and its widget, `allocation_request/sections.html` and `allocation_request/card.html`, and the system checks. A constant for the quota field's id. |
+| coldfront-utils | The `allocation_request` app: section registry, setting and system checks, `AllocationRequestForm`, the view replacement, the view's htmx response with a resource's cards, the `request_sections` field and its widget, `allocation_request/sections.html` and `allocation_request/card.html`, and the system checks. |
 | coldfront-storage-plugin | Change its receivers that filter on `sender=AllocationCreateView` (`add-requester-info`, `add_storage_attributes_to_new_allocation`) to take any sender and check it with `coldfront_utils.signals.sent_by` (E004 fails `migrate` and `check` until they do). Register `storage_quota`, with its card template and intro template, applying where the resource's `quota_on_request` attribute is Yes; a setting for the attribute's name, and a data migration creating its type. Stop replacing `AllocationCreateView`; remove `StorageAllocationRequestDetailsView`, its form, URL and template. |
-| coldfront-billing-plugin | Register `billing_cost`, with its card template, intro template and the card's script (autocomplete, no-cost quota, live estimate), started on `htmx:load`. Stop replacing `AllocationCreateView`; remove `UpdateAllocationDetailsView` and `DeleteIncompleteAllocationView`, their URLs and template. Change the cost preview endpoint to take a project and resource (and quota) instead of an allocation pk. |
+| coldfront-billing-plugin | Register `billing_cost`, with its card template, intro template and the card's script (autocomplete, no-cost quota, live estimate), started on `htmx:load`. Stop replacing `AllocationCreateView`; remove `UpdateAllocationDetailsView` and `DeleteIncompleteAllocationView`, their URLs and template. A new estimate endpoint takes a project, resource and quota; the allocation-pk cost preview stays for change requests. Depend on coldfront-utils. |
 | coldfront-ticketing-plugin | Import `sent_by` from `coldfront_utils.signals` and drop its own copy in `ticketing/signals.py` (once its lock has a coldfront-utils with it). Otherwise none: the request ticket is filed on `allocation_new`, as now, and the quota is there. |
 | coldfront-ansible | Add `coldfront_utils.allocation_request` to `INSTALLED_APPS`. |
 | coldfront-branding | Add `{{ form.request_sections }}` to its `allocation/allocation_create.html`, after "Reason for Request". Tufts' wording for the sections' intro text, as overrides of the plugins' intro templates, if the plugins' defaults don't fit. |
@@ -325,7 +328,7 @@ app stops startup with `ImproperlyConfigured`; one listed after it is E002.
    for a quota"), asking by default. Still to decide: which of the six unpaid resources (Course and
    TTS Staff) say No.
 2. **Billed resources that aren't storage.** What does billing need for them, and what does the cost
-   preview show?
+   preview show? For now (2026-11-13) their card asks only for the cost center and grant.
 3. **Incomplete requests that already exist.** New allocations made through the current second
    pages that never got a quota. Find them, then complete or delete them by hand before the switch?
 4. **Allocation change requests.** Billing also replaces `AllocationChangeView` to collect a no-cost
