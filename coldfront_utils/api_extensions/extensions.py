@@ -1,5 +1,6 @@
 """Extensions: what a plugin serves through the REST API, and the registry of them."""
 
+import inspect
 import re
 
 from django.core.exceptions import ImproperlyConfigured
@@ -15,6 +16,11 @@ class ExtensionNotFound(Exception):
     """No such item, or not one this caller may see. The API answers 404."""
 
 
+class ExtensionBadRequest(Exception):
+    """The query parameters are wrong (an unknown status, say). The API answers 400 with str() of the
+    exception, so say what's wrong in words the caller can act on."""
+
+
 class ExtensionUnavailable(Exception):
     """The content can't be fetched right now (its storage system is down, say). The API answers 503
     with str() of the exception, so the message must be safe to show callers: log the details in the
@@ -27,9 +33,14 @@ class ApiExtension:
 
     A subclass sets the class attributes and implements allows() and summary(), and item() if it has
     items. The API makes an instance for each request. `target` is what the URL names (a User, a
-    Project or an Allocation, by kind) and `caller` is the User asking. summary() and item() return
-    data that can be rendered as JSON, and should include {"extension": name, "version": version}, so
-    a caller can see what it got.
+    Project or an Allocation, by kind) and `caller` is the User asking. summary() and item() also get
+    `params`, the request's query parameters as {name: [value, ...]} (a list, since a parameter can be
+    repeated); ignore any you don't use, and raise ExtensionBadRequest for a value you can't use. They
+    return data that can be rendered as JSON, and should include {"extension": name, "version":
+    version}, so a caller can see what it got.
+
+    An item's URL is its summary's URL plus <key>/, so a summary lists its items by key, not by URL:
+    the extension never needs to know the host or the API version the caller used.
     """
 
     # The extension's URL segment: lowercase letters, digits and hyphens, starting with a letter.
@@ -48,11 +59,11 @@ class ApiExtension:
         doesn't, as for a target that doesn't exist. Required: there's no default."""
         raise NotImplementedError(f"{type(self).__name__} must say who may see it")
 
-    def summary(self, target, caller):
+    def summary(self, target, caller, params):
         """The extension's content about target, at <name>/."""
         raise NotImplementedError(f"{type(self).__name__} must return its summary")
 
-    def item(self, target, key, caller):
+    def item(self, target, key, caller, params):
         """One item, at <name>/<key>/; key is a string. Raise ExtensionNotFound for a key there's no
         item for. By default, the extension has no items."""
         raise ExtensionNotFound(key)
@@ -95,6 +106,12 @@ def register_api_extension(extension_class):
     for method in ("allows", "summary"):
         if getattr(extension_class, method) is getattr(ApiExtension, method):
             raise ImproperlyConfigured(f"{class_name} must implement {method}()")
+    for method in ("summary", "item"):
+        if not takes_params(getattr(extension_class, method)):
+            raise ImproperlyConfigured(
+                f"{class_name}.{method}() must take `params`, the request's query parameters: "
+                f"{method}(self, target, {'key, ' if method == 'item' else ''}caller, params)"
+            )
     name = extension_class.name
     if not (isinstance(name, str) and EXTENSION_NAME.fullmatch(name)):
         raise ImproperlyConfigured(
@@ -114,6 +131,14 @@ def register_api_extension(extension_class):
         )
     _registry[(kind, name)] = extension_class
     return extension_class
+
+
+def takes_params(method):
+    """Whether method can be called with params=..., so the API can pass the query parameters."""
+    parameters = inspect.signature(method).parameters.values()
+    return any(
+        parameter.name == "params" or parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters
+    )
 
 
 def find_extension(kind, name):

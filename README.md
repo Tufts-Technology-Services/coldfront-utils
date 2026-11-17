@@ -261,7 +261,7 @@ knows nothing about the plugin. This isn't a Django app; there's nothing to add 
 The design is in "Plugin extensions" in the REST API plugin's `docs/rest-api-plan.md`.
 
 ```python
-from coldfront_utils.api_extensions import ExtensionUnavailable, PersonExtension, register_api_extension
+from coldfront_utils.api_extensions import PersonExtension, register_api_extension
 
 
 class StorageAreas(PersonExtension):
@@ -272,10 +272,11 @@ class StorageAreas(PersonExtension):
     def allows(self, target, caller):
         return caller == target or caller.is_superuser or caller.has_perm("storage.view_any_storage")
 
-    def summary(self, target, caller):
-        return {"extension": self.name, "version": self.version, "areas": [...]}
+    def summary(self, target, caller, params):
+        # items by key: the caller asks for /api/v2/users/<username>/storage/home/
+        return {"extension": self.name, "version": self.version, "areas": [{"key": "home"}, {"key": "scratch"}]}
 
-    def item(self, target, key, caller):  # /api/v2/users/<username>/storage/<key>/
+    def item(self, target, key, caller, params):  # /api/v2/users/<username>/storage/<key>/
         ...
 
 
@@ -286,14 +287,22 @@ register_api_extension(StorageAreas)
 - **Three kinds:** `PersonExtension` (`target` is a `User`, at `users/<username>/<name>/`),
   `ProjectExtension` (a `Project`, at `projects/<id>/<name>/`) and `AllocationExtension` (an
   `Allocation`, at `allocations/<id>/<name>/`), each with items at `<name>/<key>/`. The API makes an
-  instance per request; `caller` is the `User` asking.
+  instance per request; `caller` is the `User` asking, already authenticated.
+- **Items by key, not URL.** An item's URL is its summary's URL plus `<key>/`, so a summary lists its
+  items' keys and the caller builds the URLs from the one it called. The extension never needs the
+  host or the API version the caller used, and gets no request.
+- **Query parameters** reach `summary()` and `item()` as `params`, `{name: [value, ...]}` (a list,
+  since a parameter can be repeated: `?status=Active&status=New`). Ignore those you don't use; raise
+  `ExtensionBadRequest` with a message for a value you can't use, which the API answers with a 400.
+  `allows()` doesn't get them: who may see something doesn't depend on how it's filtered. A
+  `summary()` or `item()` that doesn't take `params` is refused at registration.
 - **`allows()` decides who sees the content,** and must be implemented: there's no default. The
   API looks up the target first, and answers 404 both when there's none and when `allows()` says
   no. A plugin defines the permissions it needs as ordinary Django permissions on its own models
   (`storage.view_any_storage` above), granted to service accounts as they need them.
   `can_view_project(caller, project)` and `can_view_allocation(caller, allocation)` apply
   ColdFront's own page rules, for content anyone who can see the project or allocation may see.
-- **Errors:** raise `ExtensionNotFound` for no such item (or one this caller may not see), a 404,
+- **Other errors:** raise `ExtensionNotFound` for no such item (or one this caller may not see), a 404,
   and `ExtensionUnavailable` when the data can't be fetched, a 503 with the exception's message,
   so keep it safe to show and log the details yourself. `item()` raises `ExtensionNotFound` by
   default.

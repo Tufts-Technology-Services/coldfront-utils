@@ -17,6 +17,7 @@ from .access import can_view_allocation, can_view_project
 from .extensions import (
     AllocationExtension,
     ApiExtension,
+    ExtensionBadRequest,
     ExtensionNotFound,
     ExtensionUnavailable,
     PersonExtension,
@@ -29,6 +30,7 @@ from .extensions import (
 __all__ = [
     "AllocationExtension",
     "ApiExtension",
+    "ExtensionBadRequest",
     "ExtensionNotFound",
     "ExtensionUnavailable",
     "PersonExtension",

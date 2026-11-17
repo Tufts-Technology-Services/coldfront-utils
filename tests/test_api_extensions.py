@@ -6,7 +6,9 @@ from django.core.exceptions import ImproperlyConfigured
 from coldfront_utils.api_extensions import (
     AllocationExtension,
     ApiExtension,
+    ExtensionBadRequest,
     ExtensionNotFound,
+    ExtensionUnavailable,
     PersonExtension,
     ProjectExtension,
     extensions,
@@ -28,7 +30,7 @@ def make_extension_class(base=PersonExtension, class_name="SampleExtension", **a
     def allows(self, target, caller):
         return True
 
-    def summary(self, target, caller):
+    def summary(self, target, caller, params):
         return {"extension": self.name, "version": self.version}
 
     body = {"name": "sample", "description": "A sample extension", "allows": allows, "summary": summary}
@@ -57,7 +59,7 @@ def test_register_works_as_a_decorator():
         def allows(self, target, caller):
             return True
 
-        def summary(self, target, caller):
+        def summary(self, target, caller, params):
             return {}
 
     assert find_extension("person", "quotas") is Quotas
@@ -182,7 +184,7 @@ def test_by_default_an_extension_has_no_items():
     extension = make_extension_class()()
 
     with pytest.raises(ExtensionNotFound):
-        extension.item(target=None, key="home", caller=None)
+        extension.item(target=None, key="home", caller=None, params={})
 
 
 def test_the_defaults_are_version_1_and_not_deprecated():
@@ -190,3 +192,36 @@ def test_the_defaults_are_version_1_and_not_deprecated():
 
     assert extension_class.version == 1
     assert extension_class.deprecated is False
+
+
+def test_a_summary_that_does_not_take_params_is_refused():
+    def summary(self, target, caller):
+        return {}
+
+    with pytest.raises(ImproperlyConfigured, match="params"):
+        register_api_extension(make_extension_class(summary=summary))
+
+
+def test_an_item_that_does_not_take_params_is_refused():
+    def item(self, target, key, caller):
+        return {}
+
+    with pytest.raises(ImproperlyConfigured, match="params"):
+        register_api_extension(make_extension_class(item=item))
+
+
+def test_methods_taking_params_by_keyword_or_as_keyword_arguments_are_accepted():
+    def summary(self, target, caller, *, params):
+        return {}
+
+    def item(self, target, key, caller, **kwargs):
+        return {}
+
+    register_api_extension(make_extension_class(summary=summary, item=item))
+
+    assert find_extension("person", "sample") is not None
+
+
+def test_the_exceptions_carry_a_message_for_the_caller():
+    assert str(ExtensionBadRequest("Unknown status: Gone.")) == "Unknown status: Gone."
+    assert str(ExtensionUnavailable("Storage is unavailable.")) == "Storage is unavailable."
